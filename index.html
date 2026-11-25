@@ -163,7 +163,7 @@
           <h2 class="text-sm font-bold">🔑 Gemini API キー（必須）</h2>
           <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" class="text-xs font-bold text-emerald-600 underline">無料で取得 ↗</a>
         </div>
-        <input id="set-apikey" type="password" placeholder="AIzaSy... を貼り付け" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-xs" />
+        <input id="set-apikey" type="password" placeholder="APIキーを貼り付け" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-xs" />
         <p class="text-[11px] text-slate-500">※入力したキーはこのスマホ内（localStorage）にのみ保存されます。</p>
       </div>
 
@@ -216,6 +216,7 @@
     (function () {
       var GH_URL = 'https://health.googleapis.com/v4/users/me/dataTypes/nutrition-log/dataPoints';
       var GH_SCOPE = 'https://www.googleapis.com/auth/googlehealth.nutrition.writeonly';
+      var GEMINI_MODELS = ['gemini-3-flash-preview', 'gemini-3.1-flash-lite-preview', 'gemini-2.5-flash'];
       var MEALS = [
         { id: 'BREAKFAST', label: '🌅 朝食' },
         { id: 'LUNCH', label: '☀️ 昼食' },
@@ -252,7 +253,7 @@
           (isErr ? 'bg-rose-600 text-white border-rose-700' : 'bg-slate-900 text-white border-slate-700');
         el.classList.remove('hidden');
         clearTimeout(st.tTimer);
-        st.tTimer = setTimeout(function () { el.classList.add('hidden'); }, 4000);
+        st.tTimer = setTimeout(function () { el.classList.add('hidden'); }, 4500);
       }
 
       function nowStr(d) {
@@ -418,7 +419,10 @@
                 method: 'POST',
                 headers: { Authorization: 'Bearer ' + st.cfg.token.trim(), 'Content-Type': 'application/json' },
                 body: JSON.stringify(b)
-              }).then(function (r) { if (!r.ok) throw new Error('API Error ' + r.status); return r.json(); });
+              }).then(function (r) {
+                if (!r.ok) return r.text().then(function (t) { throw new Error('Health API (' + r.status + '): ' + t.slice(0, 80)); });
+                return r.json();
+              });
             }))
           : Promise.resolve();
 
@@ -439,7 +443,7 @@
             payloads: payloads
           });
           saveLogs();
-          toast('「' + st.res.mealTitle + '」を記録しました！');
+          toast(isLive ? 'Google Health に記録しました！' : '「' + st.res.mealTitle + '」を記録しました！');
           resetCapture();
           renderSummary();
           switchTab('history');
@@ -470,7 +474,7 @@
             '<div class="flex gap-3 items-center">' +
             (l.thumb ? '<img src="' + l.thumb + '" class="w-14 h-14 rounded-xl object-cover shrink-0"/>' : '<div class="w-14 h-14 rounded-xl bg-slate-100 flex items-center justify-center text-xl">🍽️</div>') +
             '<div class="flex-1 min-w-0">' +
-            '<div class="text-[11px] text-slate-400">' + mt.label + ' ・ ' + (l.time || '').replace('T', ' ') + '</div>' +
+            '<div class="text-[11px] text-slate-400">' + mt.label + ' ・ ' + (l.time || '').replace('T', ' ') + (l.live ? ' ・ ☁️同期済' : '') + '</div>' +
             '<div class="text-sm font-bold truncate">' + l.title + '</div>' +
             '<div class="text-xs font-bold">' + l.sum.kcal + ' kcal <span class="font-normal text-slate-500">(P:' + l.sum.p + 'g F:' + l.sum.f + 'g C:' + l.sum.c + 'g)</span></div>' +
             '</div></div>' +
@@ -491,12 +495,36 @@
         var c = document.createElement('canvas'); c.width = 600; c.height = 420;
         var ctx = c.getContext('2d');
         ctx.fillStyle = '#f8fafc'; ctx.fillRect(0, 0, 600, 420);
-        ctx.fillStyle = '#0f172a'; ctx.font = 'bold 28px sans-serif'; ctx.textAlign = 'center';
+        ctx.fillStyle = '#0f172a'; ctx.font = 'bold 24px sans-serif'; ctx.textAlign = 'center';
         var label = type === 'salmon' ? '焼き鮭定食（焼き鮭・白米160g・味噌汁・おひたし）'
           : type === 'salad' ? 'グリルチキンとアボカド・ゆで卵のサラダボウル'
           : 'ロースカツカレーライス（普通盛り）';
         ctx.fillText(label, 300, 210);
         return c.toDataURL('image/png');
+      }
+
+      function callGeminiWithFallback(b64, idx) {
+        var model = GEMINI_MODELS[idx];
+        var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + encodeURIComponent(st.cfg.apiKey.trim());
+        return fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ role: 'user', parts: [
+              { text: '管理栄養士として食事画像を解析し、mealTitle(日本語名), healthTip(一言アドバイス), items(配列: name, kcal, proteinG, fatG, carbsG, fiberG, sodiumMg)のみを含むJSONを返してください。' },
+              { inlineData: { mimeType: 'image/jpeg', data: b64 } }
+            ]}],
+            generationConfig: { responseMimeType: 'application/json' }
+          })
+        }).then(function (r) {
+          if (r.status === 404 && idx + 1 < GEMINI_MODELS.length) {
+            return callGeminiWithFallback(b64, idx + 1);
+          }
+          if (!r.ok) {
+            return r.text().then(function (t) { throw new Error('Gemini API (' + r.status + '): ' + t.slice(0, 80)); });
+          }
+          return r.json();
+        });
       }
 
       function handleImage(src) {
@@ -529,20 +557,7 @@
           else { var fr = new FileReader(); fr.onload = function (e) { img.src = e.target.result; }; fr.readAsDataURL(src); }
         }).then(function (compressed) {
           st.img = compressed;
-          return fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + encodeURIComponent(st.cfg.apiKey.trim()), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [{ role: 'user', parts: [
-                { text: '管理栄養士として食事画像を解析し、mealTitle(日本語名), healthTip(一言アドバイス), items(配列: name, kcal, proteinG, fatG, carbsG, fiberG, sodiumMg)をJSONで返してください。' },
-                { inlineData: { mimeType: 'image/jpeg', data: compressed.b64 } }
-              ]}],
-              generationConfig: { responseMimeType: 'application/json' }
-            })
-          });
-        }).then(function (r) {
-          if (!r.ok) throw new Error('Gemini API エラー (' + r.status + ')');
-          return r.json();
+          return callGeminiWithFallback(compressed.b64, 0);
         }).then(function (data) {
           var txt = data.candidates[0].content.parts[0].text;
           var parsed = JSON.parse(txt);
