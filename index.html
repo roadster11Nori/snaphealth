@@ -117,7 +117,10 @@
       <!-- 解析結果 -->
       <div id="box-result" class="hidden bg-white rounded-3xl p-5 border border-slate-200 space-y-4">
         <div class="flex gap-3 items-start">
-          <img id="res-img" src="" alt="" class="w-20 h-20 rounded-2xl object-cover border border-slate-200 shrink-0" />
+          <div id="res-img-wrap" class="relative shrink-0 cursor-zoom-in active:opacity-80 transition">
+            <img id="res-img" src="" alt="" class="w-20 h-20 rounded-2xl object-cover border border-slate-200" />
+            <span class="absolute bottom-1 right-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded-md pointer-events-none">🔍</span>
+          </div>
           <div class="flex-1 min-w-0 space-y-1.5">
             <div class="flex justify-between items-center">
               <span id="res-conf" class="text-[11px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700">AI解析完了</span>
@@ -212,6 +215,14 @@
     </div>
   </div>
 
+  <!-- 写真拡大ポップアップ（ライトボックス） -->
+  <div id="img-lightbox" class="hidden fixed inset-0 z-[60] bg-black/90 backdrop-blur-xs flex flex-col items-center justify-center p-4">
+    <button id="lightbox-close" type="button" aria-label="閉じる" class="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/15 hover:bg-white/25 text-white text-lg font-bold flex items-center justify-center">✕</button>
+    <img id="lightbox-img" src="" alt="" class="max-w-full max-h-[80vh] object-contain rounded-2xl shadow-2xl" />
+    <div id="lightbox-caption" class="mt-3 text-white text-sm font-bold text-center leading-snug max-w-md break-words"></div>
+    <div class="mt-1.5 text-white/60 text-[11px]">画面をタップして閉じる</div>
+  </div>
+
   <script>
     (function () {
       var GH_URL = 'https://health.googleapis.com/v4/users/me/dataTypes/nutrition-log/dataPoints';
@@ -298,6 +309,20 @@
       }
       $('modal-close').onclick = function () { $('modal').classList.add('hidden'); };
       $('modal').onclick = function (e) { if (e.target === $('modal')) $('modal').classList.add('hidden'); };
+
+      // 写真拡大ポップアップを開く・閉じる
+      function openLightbox(src, caption) {
+        if (!src) return;
+        $('lightbox-img').src = src;
+        $('lightbox-caption').textContent = caption || '';
+        $('img-lightbox').classList.remove('hidden');
+      }
+      function closeLightbox() {
+        $('img-lightbox').classList.add('hidden');
+        $('lightbox-img').src = '';
+      }
+      $('lightbox-close').onclick = function (e) { e.stopPropagation(); closeLightbox(); };
+      $('img-lightbox').onclick = closeLightbox;
 
       function nowLocal() {
         var d = new Date();
@@ -437,7 +462,7 @@
           '</div>');
       };
 
-      // 画像リサイズ・圧縮（詳細振り返りでも見やすいサイズでサムネイル保存）
+      // 画像リサイズ・圧縮（拡大ポップアップでも綺麗に見えるよう640pxで保存）
       function compress(fileOrUrl) {
         return new Promise(function (resolve, reject) {
           var img = new Image();
@@ -449,12 +474,12 @@
             c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
             var url = c.toDataURL('image/jpeg', 0.82);
 
-            var tsc = Math.min(1, 360 / img.width);
+            var tsc = Math.min(1, 640 / img.width);
             var tc = document.createElement('canvas');
             tc.width = Math.round(img.width * tsc);
             tc.height = Math.round(img.height * tsc);
             tc.getContext('2d').drawImage(img, 0, 0, tc.width, tc.height);
-            resolve({ url: url, thumb: tc.toDataURL('image/jpeg', 0.72), b64: url.split(',')[1] });
+            resolve({ url: url, thumb: tc.toDataURL('image/jpeg', 0.75), b64: url.split(',')[1] });
           };
           img.onerror = function () { reject(new Error('画像の読み込みに失敗しました')); };
           if (typeof fileOrUrl === 'string') {
@@ -694,6 +719,13 @@
         });
       }
 
+      // 解析結果の写真をタップして拡大表示
+      $('res-img-wrap').onclick = function () {
+        if (st.img && st.img.url) {
+          openLightbox(st.img.url, (st.res && st.res.mealTitle) || '');
+        }
+      };
+
       $('res-title').oninput = function (e) { if (st.res) st.res.mealTitle = e.target.value; };
       $('res-time').onchange = function (e) { st.time = e.target.value; };
       $('btn-reset').onclick = function () {
@@ -835,7 +867,7 @@
         b.onclick = function () { handleImage(makeSample(b.dataset.sample)); };
       });
 
-      // 履歴の詳細振り返りモーダル表示（過去の記録にも後方互換対応）
+      // 履歴の詳細振り返りモーダル表示（写真タップで拡大ポップアップ対応）
       function showHistoryDetail(idx) {
         var l = st.logs[idx];
         if (!l) return;
@@ -891,7 +923,10 @@
 
         var html = '<div class="space-y-3.5">';
         if (l.thumb) {
-          html += '<img src="' + l.thumb + '" alt="' + esc(l.title) + '" class="w-full max-h-56 object-cover rounded-2xl border border-slate-200" />';
+          html += '<div id="detail-img-wrap" class="relative cursor-zoom-in active:opacity-85 transition">' +
+            '<img src="' + l.thumb + '" alt="' + esc(l.title) + '" class="w-full max-h-56 object-cover rounded-2xl border border-slate-200" />' +
+            '<span class="absolute bottom-2 right-2 bg-black/65 text-white text-[11px] font-bold px-2.5 py-1 rounded-full pointer-events-none">🔍 タップで拡大</span>' +
+            '</div>';
         }
 
         html += '<div class="space-y-1">' +
@@ -946,9 +981,16 @@
 
         html += '</div>';
         showModal('🍽️ 食事の振り返り', html);
+
+        var detailImgWrap = $('detail-img-wrap');
+        if (detailImgWrap && l.thumb) {
+          detailImgWrap.onclick = function () {
+            openLightbox(l.thumb, l.title || '');
+          };
+        }
       }
 
-      // 履歴一覧の描画（カードタップで詳細振り返り ＋ Google Health batchDelete 同時削除対応）
+      // 履歴一覧の描画（写真タップで拡大・カードタップで詳細振り返り ＋ Google Health batchDelete 同時削除対応）
       function renderHistory() {
         var box = $('view-history');
         if (!st.logs.length) {
@@ -960,7 +1002,9 @@
           var canCloudDel = l.live && l.names && l.names.length > 0;
           return '<div class="bg-white rounded-2xl p-3.5 border border-slate-200 space-y-2">' +
             '<div data-v="' + i + '" class="h-detail flex gap-3 items-center cursor-pointer active:opacity-70 transition">' +
-            (l.thumb ? '<img src="' + l.thumb + '" class="w-14 h-14 rounded-xl object-cover shrink-0"/>' : '<div class="w-14 h-14 rounded-xl bg-slate-100 flex items-center justify-center text-xl shrink-0">🍽️</div>') +
+            (l.thumb
+              ? '<div data-img="' + i + '" class="h-thumb relative shrink-0 cursor-zoom-in"><img src="' + l.thumb + '" class="w-14 h-14 rounded-xl object-cover border border-slate-100"/><span class="absolute bottom-0.5 right-0.5 bg-black/55 text-white text-[9px] px-1 rounded pointer-events-none">🔍</span></div>'
+              : '<div class="w-14 h-14 rounded-xl bg-slate-100 flex items-center justify-center text-xl shrink-0">🍽️</div>') +
             '<div class="flex-1 min-w-0 space-y-0.5">' +
             '<div class="text-[11px] text-slate-400">' + mt.label + ' ・ ' + esc((l.time || '').replace('T', ' ')) + (l.live ? ' ・ ☁️同期済' : '') + '</div>' +
             '<div class="text-sm font-bold leading-snug break-words">' + esc(l.title) + '</div>' +
@@ -974,6 +1018,14 @@
             '</div>' +
             '<button type="button" data-d="' + i + '" class="h-del text-rose-500 font-bold">' + (canCloudDel ? '☁️ Healthからも削除' : '削除') + '</button></div></div>';
         }).join('');
+
+        box.querySelectorAll('.h-thumb').forEach(function (el) {
+          el.onclick = function (e) {
+            e.stopPropagation();
+            var item = st.logs[Number(el.dataset.img)];
+            if (item && item.thumb) openLightbox(item.thumb, item.title || '');
+          };
+        });
 
         box.querySelectorAll('.h-detail').forEach(function (el) {
           el.onclick = function () { showHistoryDetail(Number(el.dataset.v)); };
