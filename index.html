@@ -3,80 +3,100 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <meta name="theme-color" content="#059669" />
+  <meta id="meta-theme-color" name="theme-color" content="#059669" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="SnapHealth" />
   <meta name="mobile-web-app-capable" content="yes" />
   <title>SnapHealth 食事記録</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { darkMode: 'class' };
+  </script>
+  <script>
+    (function () {
+      try {
+        var cfg = JSON.parse(localStorage.getItem('sh_cfg') || '{}');
+        var theme = cfg.theme || 'system';
+        var isDark = theme === 'dark' || (theme === 'system' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        if (isDark) {
+          document.documentElement.classList.add('dark');
+          var mc = document.getElementById('meta-theme-color');
+          if (mc) mc.setAttribute('content', '#0f172a');
+        }
+      } catch (e) {}
+    })();
+  </script>
   <style>
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html.dark { color-scheme: dark; }
     body { margin: 0; background: #f8fafc; color: #0f172a; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    html.dark body { background: #020617; color: #f1f5f9; }
     .hidden { display: none !important; }
   </style>
 </head>
-<body class="bg-slate-50 text-slate-900 min-h-screen pb-12">
+<body class="bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 min-h-screen pb-12 transition-colors">
 
   <!-- トースト通知 -->
   <div id="toast" class="hidden fixed top-3 left-1/2 -translate-x-1/2 z-50 w-[92%] max-w-md px-4 py-3 rounded-2xl shadow-lg border text-xs leading-relaxed font-medium bg-slate-900 text-white break-words"></div>
 
   <!-- ヘッダー＆上部ナビゲーション -->
-  <header class="sticky top-0 z-30 bg-white border-b border-slate-200 shadow-xs">
+  <header class="sticky top-0 z-30 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shadow-xs transition-colors">
     <div class="max-w-xl mx-auto px-3 pt-3 pb-2 flex items-center justify-between gap-2">
       <div class="flex items-center gap-2 min-w-0 flex-1">
         <span class="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center text-base shrink-0">🍽️</span>
         <div class="min-w-0">
-          <h1 class="text-[13px] sm:text-sm font-bold leading-snug break-words">SnapHealth 食事記録</h1>
-          <p class="text-[10px] text-slate-500 leading-tight">Gemini AI × Health API v4</p>
+          <h1 class="text-[13px] sm:text-sm font-bold leading-snug break-words text-slate-900 dark:text-slate-100">SnapHealth 食事記録</h1>
+          <p class="text-[10px] text-slate-500 dark:text-slate-400 leading-tight">Gemini AI × Health API v4</p>
         </div>
       </div>
       <div class="flex items-center gap-1 shrink-0">
-        <button id="btn-pwa" type="button" class="px-2 py-1 rounded-full text-[11px] font-bold bg-slate-900 text-white">📱 追加</button>
-        <span id="badge-mode" class="px-2 py-1 rounded-full text-[11px] font-bold bg-amber-50 border border-amber-200 text-amber-700">● デモ</span>
+        <button id="btn-theme" type="button" aria-label="ダークモード切替" title="テーマ切替" class="w-7 h-7 rounded-full flex items-center justify-center bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs">🌙</button>
+        <button id="btn-pwa" type="button" class="px-2 py-1 rounded-full text-[11px] font-bold bg-slate-900 dark:bg-slate-700 text-white">📱 追加</button>
+        <span id="badge-mode" class="px-2 py-1 rounded-full text-[11px] font-bold bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300">● デモ</span>
       </div>
     </div>
 
     <!-- 3タブ切り替えバー（画面上部に配置） -->
-    <div class="max-w-xl mx-auto grid grid-cols-3 border-t border-slate-100 text-xs font-bold">
-      <button id="tab-btn-capture" type="button" class="py-2.5 text-center border-b-2 border-emerald-600 text-emerald-600">📷 撮影・記録</button>
-      <button id="tab-btn-history" type="button" class="py-2.5 text-center border-b-2 border-transparent text-slate-500">📜 履歴 (<span id="hist-count">0</span>)</button>
-      <button id="tab-btn-settings" type="button" class="py-2.5 text-center border-b-2 border-transparent text-slate-500">⚙️ 連携設定</button>
+    <div class="max-w-xl mx-auto grid grid-cols-3 border-t border-slate-100 dark:border-slate-800 text-xs font-bold">
+      <button id="tab-btn-capture" type="button" class="py-2.5 text-center border-b-2 border-emerald-600 dark:border-emerald-400 text-emerald-600 dark:text-emerald-400">📷 撮影・記録</button>
+      <button id="tab-btn-history" type="button" class="py-2.5 text-center border-b-2 border-transparent text-slate-500 dark:text-slate-400">📜 履歴 (<span id="hist-count">0</span>)</button>
+      <button id="tab-btn-settings" type="button" class="py-2.5 text-center border-b-2 border-transparent text-slate-500 dark:text-slate-400">⚙️ 連携設定</button>
     </div>
   </header>
 
   <main class="max-w-xl mx-auto px-4 pt-4 space-y-4">
 
     <!-- APIキー未設定の案内 -->
-    <div id="key-alert" class="hidden bg-amber-50 border border-amber-300 rounded-2xl p-3.5 flex items-center justify-between gap-3">
-      <div class="text-xs text-amber-900">
+    <div id="key-alert" class="hidden bg-amber-50 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-800 rounded-2xl p-3.5 flex items-center justify-between gap-3">
+      <div class="text-xs text-amber-900 dark:text-amber-200">
         <div class="font-bold">最初に Gemini API キーを設定してください</div>
-        <div class="text-[11px] text-amber-700">キーはこのスマホ内だけに安全に保存されます。</div>
+        <div class="text-[11px] text-amber-700 dark:text-amber-300/90">キーはこのスマホ内だけに安全に保存されます。</div>
       </div>
       <button id="btn-go-settings" type="button" class="px-3 py-2 rounded-xl bg-amber-600 text-white text-xs font-bold shrink-0">設定する</button>
     </div>
 
     <!-- 本日の摂取サマリー -->
-    <section class="bg-white rounded-2xl p-4 shadow-xs border border-slate-200">
-      <div class="flex justify-between text-xs text-slate-500 mb-1.5">
+    <section class="bg-white dark:bg-slate-900 rounded-2xl p-4 shadow-xs border border-slate-200 dark:border-slate-800">
+      <div class="flex justify-between text-xs text-slate-500 dark:text-slate-400 mb-1.5">
         <span class="font-bold">🔥 本日の摂取（<span id="sum-meals">0</span>食）</span>
         <span>目標 <span id="sum-target">2000</span> kcal</span>
       </div>
       <div class="flex items-baseline justify-between mb-2">
-        <div><span id="sum-kcal" class="text-2xl font-extrabold">0</span> <span class="text-xs text-slate-500">kcal</span></div>
+        <div><span id="sum-kcal" class="text-2xl font-extrabold text-slate-900 dark:text-white">0</span> <span class="text-xs text-slate-500 dark:text-slate-400">kcal</span></div>
         <div class="flex gap-2.5 text-xs font-bold">
-          <span class="text-blue-600">P:<span id="sum-p">0</span>g</span>
-          <span class="text-amber-600">F:<span id="sum-f">0</span>g</span>
-          <span class="text-emerald-600">C:<span id="sum-c">0</span>g</span>
+          <span class="text-blue-600 dark:text-blue-400">P:<span id="sum-p">0</span>g</span>
+          <span class="text-amber-600 dark:text-amber-400">F:<span id="sum-f">0</span>g</span>
+          <span class="text-emerald-600 dark:text-emerald-400">C:<span id="sum-c">0</span>g</span>
         </div>
       </div>
-      <div class="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+      <div class="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
         <div id="sum-bar" class="h-full bg-emerald-500 transition-all" style="width:0%"></div>
       </div>
     </section>
 
     <!-- ==================== TAB 1: 撮影・記録 ==================== -->
     <div id="view-capture" class="space-y-4">
-      <div class="bg-slate-900 text-white rounded-2xl p-3.5 flex items-center justify-between">
+      <div class="bg-slate-900 dark:bg-slate-800 border border-transparent dark:border-slate-700 text-white rounded-2xl p-3.5 flex items-center justify-between">
         <div>
           <div class="text-xs font-bold">⚡ 撮るだけで即記録モード</div>
           <div class="text-[11px] text-slate-300">ON時は撮影・解析後そのまま自動保存します</div>
@@ -85,74 +105,74 @@
       </div>
 
       <!-- 撮影ボタンカード -->
-      <div id="box-idle" class="bg-white rounded-3xl p-5 shadow-xs border border-slate-200 space-y-4 text-center">
+      <div id="box-idle" class="bg-white dark:bg-slate-900 rounded-3xl p-5 shadow-xs border border-slate-200 dark:border-slate-800 space-y-4 text-center">
         <div class="text-4xl">📸</div>
-        <h2 class="text-base font-bold">食事の写真を撮影・選択</h2>
-        <p class="text-xs text-slate-500">1枚の写真から料理・カロリー・PFCをAIが自動計算します</p>
+        <h2 class="text-base font-bold text-slate-900 dark:text-slate-100">食事の写真を撮影・選択</h2>
+        <p class="text-xs text-slate-500 dark:text-slate-400">1枚の写真から料理・カロリー・PFCをAIが自動計算します</p>
 
         <div class="grid grid-cols-2 gap-2.5 pt-1">
-          <button id="btn-cam" type="button" class="py-3.5 px-3 rounded-2xl bg-emerald-600 text-white text-xs font-bold shadow-xs">📷 カメラで撮る</button>
-          <button id="btn-gal" type="button" class="py-3.5 px-3 rounded-2xl bg-slate-900 text-white text-xs font-bold shadow-xs">🖼️ 写真を選ぶ</button>
+          <button id="btn-cam" type="button" class="py-3.5 px-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs">📷 カメラで撮る</button>
+          <button id="btn-gal" type="button" class="py-3.5 px-3 rounded-2xl bg-slate-900 dark:bg-slate-700 hover:bg-slate-800 dark:hover:bg-slate-600 text-white text-xs font-bold shadow-xs">🖼️ 写真を選ぶ</button>
         </div>
         <input id="inp-cam" type="file" accept="image/*" capture="environment" class="hidden" />
         <input id="inp-gal" type="file" accept="image/*" class="hidden" />
 
-        <div class="pt-3 border-t border-slate-100 text-left">
-          <div class="text-xs font-bold text-slate-500 mb-2">✨ テスト用サンプル食事（AI解析を試せます）</div>
+        <div class="pt-3 border-t border-slate-100 dark:border-slate-800 text-left">
+          <div class="text-xs font-bold text-slate-500 dark:text-slate-400 mb-2">✨ テスト用サンプル食事（AI解析を試せます）</div>
           <div class="grid grid-cols-3 gap-2 text-center">
-            <button type="button" data-sample="salmon" class="btn-sample p-2.5 rounded-xl border border-slate-200 hover:bg-emerald-50 text-xs font-bold">🐟<br/>焼き鮭定食</button>
-            <button type="button" data-sample="salad" class="btn-sample p-2.5 rounded-xl border border-slate-200 hover:bg-emerald-50 text-xs font-bold">🥗<br/>チキンサラダ</button>
-            <button type="button" data-sample="curry" class="btn-sample p-2.5 rounded-xl border border-slate-200 hover:bg-emerald-50 text-xs font-bold">🍛<br/>カツカレー</button>
+            <button type="button" data-sample="salmon" class="btn-sample p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/70 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-xs font-bold text-slate-800 dark:text-slate-200">🐟<br/>焼き鮭定食</button>
+            <button type="button" data-sample="salad" class="btn-sample p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/70 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-xs font-bold text-slate-800 dark:text-slate-200">🥗<br/>チキンサラダ</button>
+            <button type="button" data-sample="curry" class="btn-sample p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/70 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-xs font-bold text-slate-800 dark:text-slate-200">🍛<br/>カツカレー</button>
           </div>
         </div>
       </div>
 
       <!-- 解析中 -->
-      <div id="box-loading" class="hidden bg-white rounded-3xl p-8 border border-slate-200 text-center space-y-3">
+      <div id="box-loading" class="hidden bg-white dark:bg-slate-900 rounded-3xl p-8 border border-slate-200 dark:border-slate-800 text-center space-y-3">
         <div class="text-3xl animate-bounce">🤖</div>
-        <div class="text-sm font-bold">Gemini AI が栄養素を解析中...</div>
-        <div class="text-xs text-slate-500">数秒お待ちください</div>
+        <div class="text-sm font-bold text-slate-900 dark:text-slate-100">Gemini AI が栄養素を解析中...</div>
+        <div class="text-xs text-slate-500 dark:text-slate-400">数秒お待ちください</div>
       </div>
 
       <!-- 解析結果 -->
-      <div id="box-result" class="hidden bg-white rounded-3xl p-5 border border-slate-200 space-y-4">
+      <div id="box-result" class="hidden bg-white dark:bg-slate-900 rounded-3xl p-5 border border-slate-200 dark:border-slate-800 space-y-4">
         <div class="flex gap-3 items-start">
           <div id="res-img-wrap" class="relative shrink-0 cursor-zoom-in active:opacity-80 transition">
-            <img id="res-img" src="" alt="" class="w-20 h-20 rounded-2xl object-cover border border-slate-200" />
+            <img id="res-img" src="" alt="" class="w-20 h-20 rounded-2xl object-cover border border-slate-200 dark:border-slate-700" />
             <span class="absolute bottom-1 right-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded-md pointer-events-none">🔍</span>
           </div>
           <div class="flex-1 min-w-0 space-y-1.5">
             <div class="flex justify-between items-center">
-              <span id="res-conf" class="text-[11px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700">AI解析完了</span>
-              <button id="btn-reset" type="button" class="text-xs text-slate-400">撮り直す</button>
+              <span id="res-conf" class="text-[11px] font-bold px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300">AI解析完了</span>
+              <button id="btn-reset" type="button" class="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">撮り直す</button>
             </div>
-            <textarea id="res-title" rows="2" class="w-full text-sm font-bold leading-snug border-b border-slate-300 pb-1 focus:outline-none focus:border-emerald-500 resize-none bg-transparent"></textarea>
-            <p id="res-tip" class="text-[11px] text-slate-600 bg-slate-50 p-2 rounded-xl leading-relaxed"></p>
+            <textarea id="res-title" rows="2" class="w-full text-sm font-bold leading-snug text-slate-900 dark:text-slate-100 border-b border-slate-300 dark:border-slate-700 pb-1 focus:outline-none focus:border-emerald-500 resize-none bg-transparent"></textarea>
+            <p id="res-tip" class="text-[11px] text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/80 p-2 rounded-xl leading-relaxed"></p>
           </div>
         </div>
 
         <div class="grid grid-cols-4 gap-1.5" id="meal-types"></div>
-        <input id="res-time" type="datetime-local" class="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold" />
+        <input id="res-time" type="datetime-local" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-slate-100" />
 
         <div class="grid grid-cols-3 gap-2" id="portion-btns"></div>
 
-        <div class="bg-emerald-50 border border-emerald-200 rounded-2xl p-3.5 space-y-2">
+        <div class="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900 rounded-2xl p-3.5 space-y-2">
           <div class="flex justify-between items-baseline">
-            <span class="text-xs font-bold text-emerald-900">合計エネルギー</span>
-            <div><span id="res-kcal" class="text-2xl font-extrabold text-emerald-700">0</span> <span class="text-xs font-bold text-emerald-700">kcal</span></div>
+            <span class="text-xs font-bold text-emerald-900 dark:text-emerald-200">合計エネルギー</span>
+            <div><span id="res-kcal" class="text-2xl font-extrabold text-emerald-700 dark:text-emerald-400">0</span> <span class="text-xs font-bold text-emerald-700 dark:text-emerald-400">kcal</span></div>
           </div>
           <div class="grid grid-cols-4 gap-1.5 text-center text-xs">
-            <div class="bg-white p-1.5 rounded-lg"><div class="text-[10px] text-slate-400">たんぱく質</div><div id="res-p" class="font-bold text-blue-600">0g</div></div>
-            <div class="bg-white p-1.5 rounded-lg"><div class="text-[10px] text-slate-400">脂質</div><div id="res-f" class="font-bold text-amber-600">0g</div></div>
-            <div class="bg-white p-1.5 rounded-lg"><div class="text-[10px] text-slate-400">炭水化物</div><div id="res-c" class="font-bold text-emerald-600">0g</div></div>
-            <div class="bg-white p-1.5 rounded-lg"><div class="text-[10px] text-slate-400">食物繊維</div><div id="res-fb" class="font-bold text-purple-600">0g</div></div>
+            <div class="bg-white dark:bg-slate-900 p-1.5 rounded-lg border border-transparent dark:border-slate-800"><div class="text-[10px] text-slate-400">たんぱく質</div><div id="res-p" class="font-bold text-blue-600 dark:text-blue-400">0g</div></div>
+            <div class="bg-white dark:bg-slate-900 p-1.5 rounded-lg border border-transparent dark:border-slate-800"><div class="text-[10px] text-slate-400">脂質</div><div id="res-f" class="font-bold text-amber-600 dark:text-amber-400">0g</div></div>
+            <div class="bg-white dark:bg-slate-900 p-1.5 rounded-lg border border-transparent dark:border-slate-800"><div class="text-[10px] text-slate-400">炭水化物</div><div id="res-c" class="font-bold text-emerald-600 dark:text-emerald-400">0g</div></div>
+            <div class="bg-white dark:bg-slate-900 p-1.5 rounded-lg border border-transparent dark:border-slate-800"><div class="text-[10px] text-slate-400">食物繊維</div><div id="res-fb" class="font-bold text-purple-600 dark:text-purple-400">0g</div></div>
           </div>
         </div>
 
-        <div id="res-items" class="divide-y divide-slate-100 border border-slate-200 rounded-2xl overflow-hidden"></div>
+        <div id="res-items" class="divide-y divide-slate-100 dark:divide-slate-800 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden"></div>
 
-        <button id="btn-save" type="button" class="w-full py-3.5 rounded-2xl bg-emerald-600 text-white font-bold text-sm shadow-sm">✅ この食事を記録する</button>
-        <button id="btn-json" type="button" class="w-full py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600">Google Health API JSON を確認</button>
+        <button id="btn-save" type="button" class="w-full py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-sm">✅ この食事を記録する</button>
+        <button id="btn-json" type="button" class="w-full py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300">Google Health API JSON を確認</button>
       </div>
     </div>
 
@@ -161,57 +181,67 @@
 
     <!-- ==================== TAB 3: 連携設定 ==================== -->
     <div id="view-settings" class="hidden space-y-4">
-      <div class="bg-white rounded-3xl p-5 border border-emerald-200 space-y-3">
+      <div class="bg-white dark:bg-slate-900 rounded-3xl p-5 border border-emerald-200 dark:border-emerald-900/70 space-y-3">
         <div class="flex justify-between items-center">
-          <h2 class="text-sm font-bold">🔑 Gemini API キー（必須）</h2>
-          <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" class="text-xs font-bold text-emerald-600 underline">無料で取得 ↗</a>
+          <h2 class="text-sm font-bold text-slate-900 dark:text-slate-100">🔑 Gemini API キー（必須）</h2>
+          <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" class="text-xs font-bold text-emerald-600 dark:text-emerald-400 underline">無料で取得 ↗</a>
         </div>
-        <input id="set-apikey" type="password" placeholder="APIキーを貼り付け" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-xs" />
-        <p class="text-[11px] text-slate-500">※入力したキーはこのスマホ内（localStorage）にのみ保存されます。</p>
+        <input id="set-apikey" type="password" placeholder="APIキーを貼り付け" class="w-full px-3 py-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs text-slate-900 dark:text-slate-100" />
+        <p class="text-[11px] text-slate-500 dark:text-slate-400">※入力したキーはこのスマホ内（localStorage）にのみ保存されます。</p>
       </div>
 
-      <div class="bg-white rounded-3xl p-5 border border-slate-200 space-y-3">
-        <h2 class="text-sm font-bold">☁️ Google Health API 連携設定</h2>
+      <div class="bg-white dark:bg-slate-900 rounded-3xl p-5 border border-slate-200 dark:border-slate-800 space-y-3">
+        <h2 class="text-sm font-bold text-slate-900 dark:text-slate-100">☁️ Google Health API 連携設定</h2>
         <div class="grid grid-cols-2 gap-2 text-xs">
-          <button id="mode-demo" type="button" class="p-3 rounded-2xl border-2 border-emerald-600 bg-emerald-50 text-left font-bold">🧪 スマホ内保存<div class="text-[10px] font-normal text-slate-500 mt-0.5">設定不要ですぐ利用</div></button>
-          <button id="mode-live" type="button" class="p-3 rounded-2xl border border-slate-200 text-left font-bold">☁️ 本番API送信<div class="text-[10px] font-normal text-slate-500 mt-0.5">v4 endpointへPOST</div></button>
+          <button id="mode-demo" type="button" class="p-3 rounded-2xl border-2 border-emerald-600 bg-emerald-50 dark:bg-emerald-950/50 text-left font-bold text-slate-900 dark:text-slate-100">🧪 スマホ内保存<div class="text-[10px] font-normal text-slate-500 dark:text-slate-400 mt-0.5">設定不要ですぐ利用</div></button>
+          <button id="mode-live" type="button" class="p-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 text-left font-bold text-slate-900 dark:text-slate-100">☁️ 本番API送信<div class="text-[10px] font-normal text-slate-500 dark:text-slate-400 mt-0.5">v4 endpointへPOST</div></button>
         </div>
 
-        <div id="live-fields" class="hidden space-y-3 pt-2 border-t border-slate-100">
+        <div id="live-fields" class="hidden space-y-3 pt-2 border-t border-slate-100 dark:border-slate-800">
           <div>
-            <label class="text-xs font-bold block mb-1">Google OAuth クライアントID</label>
+            <label class="text-xs font-bold block mb-1 text-slate-700 dark:text-slate-300">Google OAuth クライアントID</label>
             <div class="flex gap-2">
-              <input id="set-clientid" type="text" placeholder="xxxx.apps.googleusercontent.com" class="flex-1 min-w-0 px-3 py-2 rounded-xl border border-slate-300 text-xs" />
-              <button id="btn-oauth" type="button" class="px-3 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold shrink-0">認証</button>
+              <input id="set-clientid" type="text" placeholder="xxxx.apps.googleusercontent.com" class="flex-1 min-w-0 px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs text-slate-900 dark:text-slate-100" />
+              <button id="btn-oauth" type="button" class="px-3 py-2 rounded-xl bg-slate-900 dark:bg-emerald-600 text-white text-xs font-bold shrink-0">認証</button>
             </div>
           </div>
           <div>
-            <label class="text-xs font-bold block mb-1">アクセストークン（直接入力用）</label>
-            <input id="set-token" type="password" placeholder="ya29.a0..." class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs" />
+            <label class="text-xs font-bold block mb-1 text-slate-700 dark:text-slate-300">アクセストークン（直接入力用）</label>
+            <input id="set-token" type="password" placeholder="ya29.a0..." class="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs text-slate-900 dark:text-slate-100" />
           </div>
         </div>
 
-        <label class="flex items-center justify-between pt-2 border-t border-slate-100 text-xs font-bold">
+        <label class="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800 text-xs font-bold text-slate-800 dark:text-slate-200">
           <span>料理品目ごとに分割して送信</span>
           <input id="chk-split" type="checkbox" class="w-4 h-4 accent-emerald-600" />
         </label>
       </div>
 
-      <div class="bg-white rounded-3xl p-5 border border-slate-200 space-y-2">
-        <label class="text-sm font-bold block">🎯 1日の目標カロリー (kcal)</label>
-        <input id="set-target" type="number" value="2000" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm font-bold" />
+      <!-- 画面テーマ（ダークモード）設定 -->
+      <div class="bg-white dark:bg-slate-900 rounded-3xl p-5 border border-slate-200 dark:border-slate-800 space-y-3">
+        <h2 class="text-sm font-bold text-slate-900 dark:text-slate-100">🌓 画面テーマ（ダークモード）</h2>
+        <div class="grid grid-cols-3 gap-2 text-xs">
+          <button id="theme-system" type="button" class="py-2.5 px-2 rounded-xl font-bold text-center transition">📱 端末連動</button>
+          <button id="theme-light" type="button" class="py-2.5 px-2 rounded-xl font-bold text-center transition">☀️ ライト</button>
+          <button id="theme-dark" type="button" class="py-2.5 px-2 rounded-xl font-bold text-center transition">🌙 ダーク</button>
+        </div>
+      </div>
+
+      <div class="bg-white dark:bg-slate-900 rounded-3xl p-5 border border-slate-200 dark:border-slate-800 space-y-2">
+        <label class="text-sm font-bold block text-slate-900 dark:text-slate-100">🎯 1日の目標カロリー (kcal)</label>
+        <input id="set-target" type="number" value="2000" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm font-bold text-slate-900 dark:text-slate-100" />
       </div>
     </div>
   </main>
 
   <!-- 詳細振り返り / JSON / PWA モーダル -->
-  <div id="modal" class="hidden fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-    <div class="bg-white rounded-3xl max-w-md w-full max-h-[85vh] flex flex-col overflow-hidden shadow-xl">
-      <div class="px-4 py-3 border-b border-slate-100 flex justify-between items-center gap-2">
-        <h3 id="modal-title" class="text-sm font-bold leading-snug break-words">詳細</h3>
-        <button id="modal-close" type="button" class="text-slate-500 hover:text-slate-800 px-2 py-1 text-base font-bold shrink-0">✕</button>
+  <div id="modal" class="hidden fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-slate-900 border border-transparent dark:border-slate-800 rounded-3xl max-w-md w-full max-h-[85vh] flex flex-col overflow-hidden shadow-xl">
+      <div class="px-4 py-3 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center gap-2">
+        <h3 id="modal-title" class="text-sm font-bold leading-snug break-words text-slate-900 dark:text-slate-100">詳細</h3>
+        <button id="modal-close" type="button" class="text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 px-2 py-1 text-base font-bold shrink-0">✕</button>
       </div>
-      <div id="modal-body" class="p-4 overflow-y-auto text-xs space-y-3"></div>
+      <div id="modal-body" class="p-4 overflow-y-auto text-xs space-y-3 text-slate-700 dark:text-slate-200"></div>
     </div>
   </div>
 
@@ -265,7 +295,7 @@
       var st = {
         tab: 'capture',
         cfg: Object.assign(
-          { apikey: '', mode: 'demo', clientId: '', token: '', split: false, auto: false, target: 2000 },
+          { apikey: '', mode: 'demo', clientId: '', token: '', split: false, auto: false, target: 2000, theme: 'system' },
           loadJson('sh_cfg', {})
         ),
         logs: loadJson('sh_logs', []),
@@ -292,12 +322,63 @@
         }
       }
 
+      // ダークモード適用処理
+      var darkMq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+      function isCurrentlyDark() {
+        var t = st.cfg.theme || 'system';
+        if (t === 'dark') return true;
+        if (t === 'light') return false;
+        return Boolean(darkMq && darkMq.matches);
+      }
+
+      function applyTheme() {
+        var dark = isCurrentlyDark();
+        document.documentElement.classList.toggle('dark', dark);
+        var mc = $('meta-theme-color');
+        if (mc) mc.setAttribute('content', dark ? '#0f172a' : '#059669');
+        var btnTheme = $('btn-theme');
+        if (btnTheme) {
+          btnTheme.textContent = dark ? '☀️' : '🌙';
+          btnTheme.title = dark ? 'ライトモードに切替' : 'ダークモードに切替';
+        }
+        ['system', 'light', 'dark'].forEach(function (k) {
+          var el = $('theme-' + k);
+          if (!el) return;
+          var active = (st.cfg.theme || 'system') === k;
+          el.className = 'py-2.5 px-2 rounded-xl font-bold text-center transition ' + (active
+            ? 'border-2 border-emerald-600 dark:border-emerald-500 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
+            : 'border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 text-slate-600 dark:text-slate-300');
+        });
+      }
+
+      if (darkMq) {
+        var onSystemThemeChange = function () {
+          if ((st.cfg.theme || 'system') === 'system') applyTheme();
+        };
+        if (darkMq.addEventListener) darkMq.addEventListener('change', onSystemThemeChange);
+        else if (darkMq.addListener) darkMq.addListener(onSystemThemeChange);
+      }
+
+      $('btn-theme').onclick = function () {
+        st.cfg.theme = isCurrentlyDark() ? 'light' : 'dark';
+        saveCfg();
+        applyTheme();
+        toast(st.cfg.theme === 'dark' ? '🌙 ダークモードに切り替えました' : '☀️ ライトモードに切り替えました');
+      };
+      ['system', 'light', 'dark'].forEach(function (k) {
+        $('theme-' + k).onclick = function () {
+          st.cfg.theme = k;
+          saveCfg();
+          applyTheme();
+        };
+      });
+
       var toastTimer = null;
       function toast(msg, isErr) {
         var el = $('toast');
         el.textContent = msg;
         el.className = 'fixed top-3 left-1/2 -translate-x-1/2 z-50 w-[92%] max-w-md px-4 py-3 rounded-2xl shadow-lg border text-xs leading-relaxed font-bold break-words ' +
-          (isErr ? 'bg-rose-600 text-white border-rose-500' : 'bg-slate-900 text-white border-slate-800');
+          (isErr ? 'bg-rose-600 text-white border-rose-500' : 'bg-slate-900 dark:bg-slate-800 text-white border-slate-800 dark:border-slate-700');
         clearTimeout(toastTimer);
         toastTimer = setTimeout(function () { el.classList.add('hidden'); }, isErr ? 7000 : 3500);
       }
@@ -343,7 +424,9 @@
         ['capture', 'history', 'settings'].forEach(function (k) {
           $('view-' + k).classList.toggle('hidden', k !== t);
           var b = $('tab-btn-' + k);
-          b.className = 'py-2.5 text-center border-b-2 ' + (k === t ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-slate-500');
+          b.className = 'py-2.5 text-center border-b-2 ' + (k === t
+            ? 'border-emerald-600 dark:border-emerald-400 text-emerald-600 dark:text-emerald-400'
+            : 'border-transparent text-slate-500 dark:text-slate-400');
         });
         if (t === 'history') renderHistory();
       }
@@ -353,12 +436,14 @@
       $('btn-go-settings').onclick = function () { setTab('settings'); };
 
       function syncUI() {
+        applyTheme();
         $('key-alert').classList.toggle('hidden', Boolean(st.cfg.apikey.trim()));
         var liveReady = st.cfg.mode === 'live' && st.cfg.token.trim();
         var badge = $('badge-mode');
         badge.textContent = liveReady ? '● 連携中' : (st.cfg.mode === 'live' ? '● 未認証' : '● デモ');
-        badge.className = 'px-2 py-1 rounded-full text-[11px] font-bold border ' +
-          (liveReady ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-amber-50 border-amber-200 text-amber-700');
+        badge.className = 'px-2 py-1 rounded-full text-[11px] font-bold border ' + (liveReady
+          ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300'
+          : 'bg-amber-50 dark:bg-amber-950/60 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300');
 
         $('set-apikey').value = st.cfg.apikey;
         $('set-clientid').value = st.cfg.clientId;
@@ -368,8 +453,12 @@
         $('chk-autosend').checked = st.cfg.auto;
 
         $('live-fields').classList.toggle('hidden', st.cfg.mode !== 'live');
-        $('mode-demo').className = 'p-3 rounded-2xl text-left font-bold ' + (st.cfg.mode === 'demo' ? 'border-2 border-emerald-600 bg-emerald-50' : 'border border-slate-200');
-        $('mode-live').className = 'p-3 rounded-2xl text-left font-bold ' + (st.cfg.mode === 'live' ? 'border-2 border-emerald-600 bg-emerald-50' : 'border border-slate-200');
+        $('mode-demo').className = 'p-3 rounded-2xl text-left font-bold text-slate-900 dark:text-slate-100 ' + (st.cfg.mode === 'demo'
+          ? 'border-2 border-emerald-600 dark:border-emerald-500 bg-emerald-50 dark:bg-emerald-950/50'
+          : 'border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50');
+        $('mode-live').className = 'p-3 rounded-2xl text-left font-bold text-slate-900 dark:text-slate-100 ' + (st.cfg.mode === 'live'
+          ? 'border-2 border-emerald-600 dark:border-emerald-500 bg-emerald-50 dark:bg-emerald-950/50'
+          : 'border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50');
 
         renderSummary();
       }
@@ -672,7 +761,9 @@
 
         $('meal-types').innerHTML = MEALS.map(function (m) {
           return '<button type="button" data-m="' + m.id + '" class="m-btn py-2 rounded-xl text-xs font-bold border ' +
-            (st.meal === m.id ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-600 border-slate-200') + '">' + m.label + '</button>';
+            (st.meal === m.id
+              ? 'bg-emerald-600 text-white border-emerald-600'
+              : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700') + '">' + m.label + '</button>';
         }).join('');
         $('meal-types').querySelectorAll('.m-btn').forEach(function (b) {
           b.onclick = function () { st.meal = b.dataset.m; renderResult(); };
@@ -680,7 +771,9 @@
 
         $('portion-btns').innerHTML = PORTIONS.map(function (p) {
           return '<button type="button" data-v="' + p.v + '" class="p-btn py-2 rounded-xl text-xs font-bold border ' +
-            (st.mult === p.v ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-200') + '">' + p.label + '</button>';
+            (st.mult === p.v
+              ? 'bg-slate-900 dark:bg-emerald-600 text-white border-slate-900 dark:border-emerald-600'
+              : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700') + '">' + p.label + '</button>';
         }).join('');
         $('portion-btns').querySelectorAll('.p-btn').forEach(function (b) {
           b.onclick = function () { st.mult = Number(b.dataset.v); renderResult(); };
@@ -705,10 +798,11 @@
 
         $('res-items').innerHTML = (st.res.items || []).map(function (it, idx) {
           var on = it.on !== false;
-          return '<div data-i="' + idx + '" class="it-row p-3 flex justify-between items-center gap-2 cursor-pointer ' + (on ? 'bg-white' : 'bg-slate-50 opacity-50') + '">' +
-            '<div class="min-w-0"><div class="text-xs font-bold leading-snug break-words">' + (on ? '☑️ ' : '⬜ ') + esc(it.name) + '</div>' +
+          return '<div data-i="' + idx + '" class="it-row p-3 flex justify-between items-center gap-2 cursor-pointer ' +
+            (on ? 'bg-white dark:bg-slate-900' : 'bg-slate-50 dark:bg-slate-950/60 opacity-50') + '">' +
+            '<div class="min-w-0"><div class="text-xs font-bold leading-snug break-words text-slate-900 dark:text-slate-100">' + (on ? '☑️ ' : '⬜ ') + esc(it.name) + '</div>' +
             '<div class="text-[11px] text-slate-400">P:' + Math.round((it.proteinG || 0) * m) + 'g / F:' + Math.round((it.fatG || 0) * m) + 'g / C:' + Math.round((it.carbsG || 0) * m) + 'g</div></div>' +
-            '<div class="text-xs font-bold shrink-0">' + Math.round((it.kcal || 0) * m) + ' kcal</div></div>';
+            '<div class="text-xs font-bold shrink-0 text-slate-900 dark:text-slate-100">' + Math.round((it.kcal || 0) * m) + ' kcal</div></div>';
         }).join('');
         $('res-items').querySelectorAll('.it-row').forEach(function (el) {
           el.onclick = function () {
@@ -735,7 +829,7 @@
       };
       $('btn-json').onclick = function () {
         showModal('Google Health API v4 JSON',
-          '<pre class="bg-slate-900 text-emerald-300 p-3 rounded-xl overflow-x-auto">' + esc(JSON.stringify(buildPayloads(), null, 2)) + '</pre>');
+          '<pre class="bg-slate-900 dark:bg-slate-950 border border-slate-800 text-emerald-300 p-3 rounded-xl overflow-x-auto">' + esc(JSON.stringify(buildPayloads(), null, 2)) + '</pre>');
       };
 
       // 食事記録の保存（詳細振り返り用に品目・アドバイス・詳細栄養素も保存）
@@ -924,56 +1018,58 @@
         var html = '<div class="space-y-3.5">';
         if (l.thumb) {
           html += '<div id="detail-img-wrap" class="relative cursor-zoom-in active:opacity-85 transition">' +
-            '<img src="' + l.thumb + '" alt="' + esc(l.title) + '" class="w-full max-h-56 object-cover rounded-2xl border border-slate-200" />' +
+            '<img src="' + l.thumb + '" alt="' + esc(l.title) + '" class="w-full max-h-56 object-cover rounded-2xl border border-slate-200 dark:border-slate-700" />' +
             '<span class="absolute bottom-2 right-2 bg-black/65 text-white text-[11px] font-bold px-2.5 py-1 rounded-full pointer-events-none">🔍 タップで拡大</span>' +
             '</div>';
         }
 
         html += '<div class="space-y-1">' +
           '<div class="flex flex-wrap items-center gap-1.5 text-[11px]">' +
-          '<span class="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-bold">' + mt.label + '</span>' +
-          '<span class="px-2 py-0.5 rounded-md font-bold ' + (l.live ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700') + '">' + (l.live ? '☁️ Google Health 同期済' : '📱 スマホ内保存') + '</span>' +
+          '<span class="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold">' + mt.label + '</span>' +
+          '<span class="px-2 py-0.5 rounded-md font-bold ' + (l.live
+            ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
+            : 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300') + '">' + (l.live ? '☁️ Google Health 同期済' : '📱 スマホ内保存') + '</span>' +
           '<span class="text-slate-400 ml-auto">' + esc((l.time || '').replace('T', ' ')) + multLabel + '</span>' +
           '</div>' +
-          '<div class="text-base font-extrabold text-slate-900 leading-snug break-words">' + esc(l.title) + '</div>' +
+          '<div class="text-base font-extrabold text-slate-900 dark:text-white leading-snug break-words">' + esc(l.title) + '</div>' +
           '</div>';
 
-        html += '<div class="bg-emerald-50 border border-emerald-200 rounded-2xl p-3.5 space-y-2.5">' +
+        html += '<div class="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900 rounded-2xl p-3.5 space-y-2.5">' +
           '<div class="flex justify-between items-baseline">' +
-          '<span class="text-xs font-bold text-emerald-900">合計エネルギー</span>' +
-          '<div><span class="text-2xl font-extrabold text-emerald-700">' + (l.sum ? l.sum.kcal : 0) + '</span> <span class="text-xs font-bold text-emerald-700">kcal</span></div>' +
+          '<span class="text-xs font-bold text-emerald-900 dark:text-emerald-200">合計エネルギー</span>' +
+          '<div><span class="text-2xl font-extrabold text-emerald-700 dark:text-emerald-400">' + (l.sum ? l.sum.kcal : 0) + '</span> <span class="text-xs font-bold text-emerald-700 dark:text-emerald-400">kcal</span></div>' +
           '</div>' +
           '<div class="grid grid-cols-3 gap-1.5 text-center">' +
-          '<div class="bg-white p-2 rounded-xl"><div class="text-[10px] text-slate-400">たんぱく質</div><div class="font-bold text-blue-600">' + (l.sum ? l.sum.p : 0) + 'g</div></div>' +
-          '<div class="bg-white p-2 rounded-xl"><div class="text-[10px] text-slate-400">脂質</div><div class="font-bold text-amber-600">' + (l.sum ? l.sum.f : 0) + 'g</div></div>' +
-          '<div class="bg-white p-2 rounded-xl"><div class="text-[10px] text-slate-400">炭水化物</div><div class="font-bold text-emerald-600">' + (l.sum ? l.sum.c : 0) + 'g</div></div>' +
+          '<div class="bg-white dark:bg-slate-900 p-2 rounded-xl border border-transparent dark:border-slate-800"><div class="text-[10px] text-slate-400">たんぱく質</div><div class="font-bold text-blue-600 dark:text-blue-400">' + (l.sum ? l.sum.p : 0) + 'g</div></div>' +
+          '<div class="bg-white dark:bg-slate-900 p-2 rounded-xl border border-transparent dark:border-slate-800"><div class="text-[10px] text-slate-400">脂質</div><div class="font-bold text-amber-600 dark:text-amber-400">' + (l.sum ? l.sum.f : 0) + 'g</div></div>' +
+          '<div class="bg-white dark:bg-slate-900 p-2 rounded-xl border border-transparent dark:border-slate-800"><div class="text-[10px] text-slate-400">炭水化物</div><div class="font-bold text-emerald-600 dark:text-emerald-400">' + (l.sum ? l.sum.c : 0) + 'g</div></div>' +
           '</div>';
 
         if (fb !== null || sg !== null || saltG !== null) {
           html += '<div class="grid grid-cols-3 gap-1.5 text-center">' +
-            '<div class="bg-white/80 p-1.5 rounded-xl"><div class="text-[10px] text-slate-400">食物繊維</div><div class="font-bold text-purple-600">' + (fb !== null ? fb + 'g' : '-') + '</div></div>' +
-            '<div class="bg-white/80 p-1.5 rounded-xl"><div class="text-[10px] text-slate-400">糖類</div><div class="font-bold text-slate-700">' + (sg !== null ? sg + 'g' : '-') + '</div></div>' +
-            '<div class="bg-white/80 p-1.5 rounded-xl"><div class="text-[10px] text-slate-400">食塩相当量</div><div class="font-bold text-rose-600">' + (saltG !== null ? saltG + 'g' : '-') + '</div></div>' +
+            '<div class="bg-white/80 dark:bg-slate-900/80 p-1.5 rounded-xl border border-transparent dark:border-slate-800"><div class="text-[10px] text-slate-400">食物繊維</div><div class="font-bold text-purple-600 dark:text-purple-400">' + (fb !== null ? fb + 'g' : '-') + '</div></div>' +
+            '<div class="bg-white/80 dark:bg-slate-900/80 p-1.5 rounded-xl border border-transparent dark:border-slate-800"><div class="text-[10px] text-slate-400">糖類</div><div class="font-bold text-slate-700 dark:text-slate-200">' + (sg !== null ? sg + 'g' : '-') + '</div></div>' +
+            '<div class="bg-white/80 dark:bg-slate-900/80 p-1.5 rounded-xl border border-transparent dark:border-slate-800"><div class="text-[10px] text-slate-400">食塩相当量</div><div class="font-bold text-rose-600 dark:text-rose-400">' + (saltG !== null ? saltG + 'g' : '-') + '</div></div>' +
             '</div>';
         }
         html += '</div>';
 
         if (l.tip) {
-          html += '<div class="bg-slate-50 border border-slate-200 rounded-2xl p-3 text-slate-700 leading-relaxed">' +
-            '<span class="font-bold text-slate-900">💡 AIアドバイス：</span>' + esc(l.tip) + '</div>';
+          html += '<div class="bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-2xl p-3 text-slate-700 dark:text-slate-200 leading-relaxed">' +
+            '<span class="font-bold text-slate-900 dark:text-white">💡 AIアドバイス：</span>' + esc(l.tip) + '</div>';
         }
 
         if (dishItems.length) {
           html += '<div class="space-y-1.5">' +
-            '<div class="font-bold text-slate-700">🍽️ 記録された料理の内訳</div>' +
-            '<div class="divide-y divide-slate-100 border border-slate-200 rounded-2xl overflow-hidden">' +
+            '<div class="font-bold text-slate-700 dark:text-slate-300">🍽️ 記録された料理の内訳</div>' +
+            '<div class="divide-y divide-slate-100 dark:divide-slate-800 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden">' +
             dishItems.map(function (it) {
-              return '<div class="p-2.5 bg-white flex justify-between items-center gap-2">' +
+              return '<div class="p-2.5 bg-white dark:bg-slate-900 flex justify-between items-center gap-2">' +
                 '<div class="min-w-0">' +
-                '<div class="font-bold text-slate-800 leading-snug break-words">' + esc(it.name) + (it.grams ? ' <span class="font-normal text-slate-400">(約' + it.grams + 'g)</span>' : '') + '</div>' +
+                '<div class="font-bold text-slate-800 dark:text-slate-100 leading-snug break-words">' + esc(it.name) + (it.grams ? ' <span class="font-normal text-slate-400">(約' + it.grams + 'g)</span>' : '') + '</div>' +
                 '<div class="text-[11px] text-slate-400">P:' + it.p + 'g / F:' + it.f + 'g / C:' + it.c + 'g</div>' +
                 '</div>' +
-                '<div class="font-bold text-slate-900 shrink-0">' + it.kcal + ' kcal</div>' +
+                '<div class="font-bold text-slate-900 dark:text-slate-100 shrink-0">' + it.kcal + ' kcal</div>' +
                 '</div>';
             }).join('') +
             '</div></div>';
@@ -994,29 +1090,29 @@
       function renderHistory() {
         var box = $('view-history');
         if (!st.logs.length) {
-          box.innerHTML = '<div class="bg-white rounded-3xl p-8 text-center border border-slate-200 text-xs text-slate-500">まだ食事の記録がありません</div>';
+          box.innerHTML = '<div class="bg-white dark:bg-slate-900 rounded-3xl p-8 text-center border border-slate-200 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400">まだ食事の記録がありません</div>';
           return;
         }
         box.innerHTML = st.logs.map(function (l, i) {
           var mt = MEALS.find(function (m) { return m.id === l.meal; }) || MEALS[3];
           var canCloudDel = l.live && l.names && l.names.length > 0;
-          return '<div class="bg-white rounded-2xl p-3.5 border border-slate-200 space-y-2">' +
+          return '<div class="bg-white dark:bg-slate-900 rounded-2xl p-3.5 border border-slate-200 dark:border-slate-800 space-y-2">' +
             '<div data-v="' + i + '" class="h-detail flex gap-3 items-center cursor-pointer active:opacity-70 transition">' +
             (l.thumb
-              ? '<div data-img="' + i + '" class="h-thumb relative shrink-0 cursor-zoom-in"><img src="' + l.thumb + '" class="w-14 h-14 rounded-xl object-cover border border-slate-100"/><span class="absolute bottom-0.5 right-0.5 bg-black/55 text-white text-[9px] px-1 rounded pointer-events-none">🔍</span></div>'
-              : '<div class="w-14 h-14 rounded-xl bg-slate-100 flex items-center justify-center text-xl shrink-0">🍽️</div>') +
+              ? '<div data-img="' + i + '" class="h-thumb relative shrink-0 cursor-zoom-in"><img src="' + l.thumb + '" class="w-14 h-14 rounded-xl object-cover border border-slate-100 dark:border-slate-700"/><span class="absolute bottom-0.5 right-0.5 bg-black/55 text-white text-[9px] px-1 rounded pointer-events-none">🔍</span></div>'
+              : '<div class="w-14 h-14 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-xl shrink-0">🍽️</div>') +
             '<div class="flex-1 min-w-0 space-y-0.5">' +
             '<div class="text-[11px] text-slate-400">' + mt.label + ' ・ ' + esc((l.time || '').replace('T', ' ')) + (l.live ? ' ・ ☁️同期済' : '') + '</div>' +
-            '<div class="text-sm font-bold leading-snug break-words">' + esc(l.title) + '</div>' +
-            '<div class="text-xs font-bold">' + (l.sum ? l.sum.kcal : 0) + ' kcal <span class="font-normal text-slate-500">(P:' + (l.sum ? l.sum.p : 0) + 'g F:' + (l.sum ? l.sum.f : 0) + 'g C:' + (l.sum ? l.sum.c : 0) + 'g)</span></div>' +
+            '<div class="text-sm font-bold leading-snug break-words text-slate-900 dark:text-slate-100">' + esc(l.title) + '</div>' +
+            '<div class="text-xs font-bold text-slate-900 dark:text-slate-100">' + (l.sum ? l.sum.kcal : 0) + ' kcal <span class="font-normal text-slate-500 dark:text-slate-400">(P:' + (l.sum ? l.sum.p : 0) + 'g F:' + (l.sum ? l.sum.f : 0) + 'g C:' + (l.sum ? l.sum.c : 0) + 'g)</span></div>' +
             '</div>' +
-            '<div class="text-slate-300 text-lg font-bold shrink-0">›</div></div>' +
-            '<div class="flex justify-between items-center pt-2 border-t border-slate-100 text-xs">' +
+            '<div class="text-slate-300 dark:text-slate-600 text-lg font-bold shrink-0">›</div></div>' +
+            '<div class="flex justify-between items-center pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">' +
             '<div class="flex gap-3">' +
-            '<button type="button" data-v="' + i + '" class="h-detail text-emerald-600 font-bold">詳細を見る</button>' +
-            '<button type="button" data-j="' + i + '" class="h-json text-slate-400">JSON</button>' +
+            '<button type="button" data-v="' + i + '" class="h-detail text-emerald-600 dark:text-emerald-400 font-bold">詳細を見る</button>' +
+            '<button type="button" data-j="' + i + '" class="h-json text-slate-400 dark:text-slate-500">JSON</button>' +
             '</div>' +
-            '<button type="button" data-d="' + i + '" class="h-del text-rose-500 font-bold">' + (canCloudDel ? '☁️ Healthからも削除' : '削除') + '</button></div></div>';
+            '<button type="button" data-d="' + i + '" class="h-del text-rose-500 dark:text-rose-400 font-bold">' + (canCloudDel ? '☁️ Healthからも削除' : '削除') + '</button></div></div>';
         }).join('');
 
         box.querySelectorAll('.h-thumb').forEach(function (el) {
@@ -1033,7 +1129,7 @@
 
         box.querySelectorAll('.h-json').forEach(function (b) {
           b.onclick = function () {
-            showModal('送信JSON', '<pre class="bg-slate-900 text-emerald-300 p-3 rounded-xl overflow-x-auto">' + esc(JSON.stringify(st.logs[b.dataset.j].payloads, null, 2)) + '</pre>');
+            showModal('送信JSON', '<pre class="bg-slate-900 dark:bg-slate-950 border border-slate-800 text-emerald-300 p-3 rounded-xl overflow-x-auto">' + esc(JSON.stringify(st.logs[b.dataset.j].payloads, null, 2)) + '</pre>');
           };
         });
 
