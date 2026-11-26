@@ -249,11 +249,11 @@
       function toast(msg, isErr) {
         var el = $('toast');
         el.textContent = msg;
-        el.className = 'fixed top-3 left-1/2 -translate-x-1/2 z-50 w-[92%] max-w-md px-4 py-3 rounded-2xl shadow-lg border text-sm font-medium ' +
+        el.className = 'fixed top-3 left-1/2 -translate-x-1/2 z-50 w-[92%] max-w-md px-4 py-3 rounded-2xl shadow-lg border text-xs font-medium break-all ' +
           (isErr ? 'bg-rose-600 text-white border-rose-700' : 'bg-slate-900 text-white border-slate-700');
         el.classList.remove('hidden');
         clearTimeout(st.tTimer);
-        st.tTimer = setTimeout(function () { el.classList.add('hidden'); }, 4500);
+        st.tTimer = setTimeout(function () { el.classList.add('hidden'); }, isErr ? 8000 : 4500);
       }
 
       function nowStr(d) {
@@ -325,7 +325,6 @@
                   { nutrient: 'SODIUM', quantity: { grams: r3(((it.sodiumMg || 0) * m) / 1000) } }
                 ],
                 serving: {
-                  amount: r1(m),
                   foodMeasurement: { unit: 'SERVING', quantity: r1(m) }
                 }
               }
@@ -349,7 +348,6 @@
               { nutrient: 'SODIUM', quantity: { grams: r3(t.na / 1000) } }
             ],
             serving: {
-              amount: r1(m),
               foodMeasurement: { unit: 'SERVING', quantity: r1(m) }
             }
           }
@@ -426,7 +424,7 @@
                 headers: { Authorization: 'Bearer ' + st.cfg.token.trim(), 'Content-Type': 'application/json' },
                 body: JSON.stringify(b)
               }).then(function (r) {
-                if (!r.ok) return r.text().then(function (t) { throw new Error('Health API (' + r.status + '): ' + t.slice(0, 80)); });
+                if (!r.ok) return r.text().then(function (t) { throw new Error('Health API (' + r.status + '): ' + t.slice(0, 220)); });
                 return r.json();
               });
             }))
