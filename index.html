@@ -315,7 +315,9 @@
           return items.map(function (it) {
             return {
               nutritionLog: {
-                interval: interval, foodDisplayName: it.name, mealType: st.meal,
+                interval: interval,
+                foodDisplayName: it.name,
+                mealType: st.meal,
                 energy: { kcal: Math.round((it.kcal || 0) * m) },
                 totalCarbohydrate: { grams: r1((it.carbsG || 0) * m) },
                 totalFat: { grams: r1((it.fatG || 0) * m) },
@@ -323,10 +325,7 @@
                   { nutrient: 'PROTEIN', quantity: { grams: r1((it.proteinG || 0) * m) } },
                   { nutrient: 'DIETARY_FIBER', quantity: { grams: r1((it.fiberG || 0) * m) } },
                   { nutrient: 'SODIUM', quantity: { grams: r3(((it.sodiumMg || 0) * m) / 1000) } }
-                ],
-                serving: {
-                  foodMeasurement: { unit: 'SERVING', quantity: r1(m) }
-                }
+                ]
               }
             };
           });
@@ -338,7 +337,9 @@
         }, { k: 0, p: 0, f: 0, c: 0, fb: 0, na: 0 });
         return [{
           nutritionLog: {
-            interval: interval, foodDisplayName: st.res.mealTitle || '食事記録', mealType: st.meal,
+            interval: interval,
+            foodDisplayName: st.res.mealTitle || '食事記録',
+            mealType: st.meal,
             energy: { kcal: Math.round(t.k) },
             totalCarbohydrate: { grams: r1(t.c) },
             totalFat: { grams: r1(t.f) },
@@ -346,10 +347,7 @@
               { nutrient: 'PROTEIN', quantity: { grams: r1(t.p) } },
               { nutrient: 'DIETARY_FIBER', quantity: { grams: r1(t.fb) } },
               { nutrient: 'SODIUM', quantity: { grams: r3(t.na / 1000) } }
-            ],
-            serving: {
-              foodMeasurement: { unit: 'SERVING', quantity: r1(m) }
-            }
+            ]
           }
         }];
       }
