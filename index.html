@@ -324,7 +324,10 @@
                   { nutrient: 'DIETARY_FIBER', quantity: { grams: r1((it.fiberG || 0) * m) } },
                   { nutrient: 'SODIUM', quantity: { grams: r3(((it.sodiumMg || 0) * m) / 1000) } }
                 ],
-                serving: { amount: r1(m) }
+                serving: {
+                  amount: r1(m),
+                  foodMeasurement: { unit: 'SERVING', quantity: r1(m) }
+                }
               }
             };
           });
@@ -345,7 +348,10 @@
               { nutrient: 'DIETARY_FIBER', quantity: { grams: r1(t.fb) } },
               { nutrient: 'SODIUM', quantity: { grams: r3(t.na / 1000) } }
             ],
-            serving: { amount: r1(m) }
+            serving: {
+              amount: r1(m),
+              foodMeasurement: { unit: 'SERVING', quantity: r1(m) }
+            }
           }
         }];
       }
