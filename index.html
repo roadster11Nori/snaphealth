@@ -22,17 +22,17 @@
 
   <!-- ヘッダー＆上部ナビゲーション -->
   <header class="sticky top-0 z-30 bg-white border-b border-slate-200 shadow-xs">
-    <div class="max-w-xl mx-auto px-4 pt-3 pb-2 flex items-center justify-between gap-2">
-      <div class="flex items-center gap-2 min-w-0">
+    <div class="max-w-xl mx-auto px-3 pt-3 pb-2 flex items-center justify-between gap-2">
+      <div class="flex items-center gap-2 min-w-0 flex-1">
         <span class="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center text-base shrink-0">🍽️</span>
-        <div class="truncate">
-          <h1 class="text-sm font-bold leading-tight truncate">SnapHealth 食事記録</h1>
-          <p class="text-[10px] text-slate-500">Gemini AI × Google Health API v4</p>
+        <div class="min-w-0">
+          <h1 class="text-[13px] sm:text-sm font-bold leading-snug break-words">SnapHealth 食事記録</h1>
+          <p class="text-[10px] text-slate-500 leading-tight">Gemini AI × Health API v4</p>
         </div>
       </div>
-      <div class="flex items-center gap-1.5 shrink-0">
-        <button id="btn-pwa" type="button" class="px-2.5 py-1.5 rounded-full text-xs font-bold bg-slate-900 text-white">📱 ホーム追加</button>
-        <span id="badge-mode" class="px-2.5 py-1.5 rounded-full text-xs font-bold bg-amber-50 border border-amber-200 text-amber-700">● デモ</span>
+      <div class="flex items-center gap-1 shrink-0">
+        <button id="btn-pwa" type="button" class="px-2 py-1 rounded-full text-[11px] font-bold bg-slate-900 text-white">📱 追加</button>
+        <span id="badge-mode" class="px-2 py-1 rounded-full text-[11px] font-bold bg-amber-50 border border-amber-200 text-amber-700">● デモ</span>
       </div>
     </div>
 
@@ -123,8 +123,8 @@
               <span id="res-conf" class="text-[11px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700">AI解析完了</span>
               <button id="btn-reset" type="button" class="text-xs text-slate-400">撮り直す</button>
             </div>
-            <input id="res-title" type="text" class="w-full text-sm font-bold border-b border-slate-300 pb-1 focus:outline-none" />
-            <p id="res-tip" class="text-[11px] text-slate-600 bg-slate-50 p-2 rounded-xl"></p>
+            <textarea id="res-title" rows="2" class="w-full text-sm font-bold leading-snug border-b border-slate-300 pb-1 focus:outline-none focus:border-emerald-500 resize-none bg-transparent"></textarea>
+            <p id="res-tip" class="text-[11px] text-slate-600 bg-slate-50 p-2 rounded-xl leading-relaxed"></p>
           </div>
         </div>
 
@@ -201,12 +201,12 @@
     </div>
   </main>
 
-  <!-- JSON / PWA モーダル -->
+  <!-- 詳細振り返り / JSON / PWA モーダル -->
   <div id="modal" class="hidden fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-    <div class="bg-white rounded-3xl max-w-md w-full max-h-[82vh] flex flex-col overflow-hidden">
-      <div class="px-4 py-3 border-b flex justify-between items-center">
-        <h3 id="modal-title" class="text-sm font-bold">詳細</h3>
-        <button id="modal-close" type="button" class="text-slate-500 px-2 py-1">✕</button>
+    <div class="bg-white rounded-3xl max-w-md w-full max-h-[85vh] flex flex-col overflow-hidden shadow-xl">
+      <div class="px-4 py-3 border-b border-slate-100 flex justify-between items-center gap-2">
+        <h3 id="modal-title" class="text-sm font-bold leading-snug break-words">詳細</h3>
+        <button id="modal-close" type="button" class="text-slate-500 hover:text-slate-800 px-2 py-1 text-base font-bold shrink-0">✕</button>
       </div>
       <div id="modal-body" class="p-4 overflow-y-auto text-xs space-y-3"></div>
     </div>
@@ -232,6 +232,15 @@
       ];
 
       function $(id) { return document.getElementById(id); }
+
+      function esc(str) {
+        return String(str == null ? '' : str)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
 
       function loadJson(key, fallback) {
         try {
@@ -323,7 +332,7 @@
         var liveReady = st.cfg.mode === 'live' && st.cfg.token.trim();
         var badge = $('badge-mode');
         badge.textContent = liveReady ? '● 連携中' : (st.cfg.mode === 'live' ? '● 未認証' : '● デモ');
-        badge.className = 'px-2.5 py-1.5 rounded-full text-xs font-bold border ' +
+        badge.className = 'px-2 py-1 rounded-full text-[11px] font-bold border ' +
           (liveReady ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-amber-50 border-amber-200 text-amber-700');
 
         $('set-apikey').value = st.cfg.apikey;
@@ -428,7 +437,7 @@
           '</div>');
       };
 
-      // 画像リサイズ・圧縮
+      // 画像リサイズ・圧縮（詳細振り返りでも見やすいサイズでサムネイル保存）
       function compress(fileOrUrl) {
         return new Promise(function (resolve, reject) {
           var img = new Image();
@@ -440,12 +449,12 @@
             c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
             var url = c.toDataURL('image/jpeg', 0.82);
 
-            var tsc = Math.min(1, 200 / img.width);
+            var tsc = Math.min(1, 360 / img.width);
             var tc = document.createElement('canvas');
             tc.width = Math.round(img.width * tsc);
             tc.height = Math.round(img.height * tsc);
             tc.getContext('2d').drawImage(img, 0, 0, tc.width, tc.height);
-            resolve({ url: url, thumb: tc.toDataURL('image/jpeg', 0.65), b64: url.split(',')[1] });
+            resolve({ url: url, thumb: tc.toDataURL('image/jpeg', 0.72), b64: url.split(',')[1] });
           };
           img.onerror = function () { reject(new Error('画像の読み込みに失敗しました')); };
           if (typeof fileOrUrl === 'string') {
@@ -672,7 +681,7 @@
         $('res-items').innerHTML = (st.res.items || []).map(function (it, idx) {
           var on = it.on !== false;
           return '<div data-i="' + idx + '" class="it-row p-3 flex justify-between items-center gap-2 cursor-pointer ' + (on ? 'bg-white' : 'bg-slate-50 opacity-50') + '">' +
-            '<div class="min-w-0"><div class="text-xs font-bold">' + (on ? '☑️ ' : '⬜ ') + it.name + '</div>' +
+            '<div class="min-w-0"><div class="text-xs font-bold leading-snug break-words">' + (on ? '☑️ ' : '⬜ ') + esc(it.name) + '</div>' +
             '<div class="text-[11px] text-slate-400">P:' + Math.round((it.proteinG || 0) * m) + 'g / F:' + Math.round((it.fatG || 0) * m) + 'g / C:' + Math.round((it.carbsG || 0) * m) + 'g</div></div>' +
             '<div class="text-xs font-bold shrink-0">' + Math.round((it.kcal || 0) * m) + ' kcal</div></div>';
         }).join('');
@@ -694,10 +703,10 @@
       };
       $('btn-json').onclick = function () {
         showModal('Google Health API v4 JSON',
-          '<pre class="bg-slate-900 text-emerald-300 p-3 rounded-xl overflow-x-auto">' + JSON.stringify(buildPayloads(), null, 2) + '</pre>');
+          '<pre class="bg-slate-900 text-emerald-300 p-3 rounded-xl overflow-x-auto">' + esc(JSON.stringify(buildPayloads(), null, 2)) + '</pre>');
       };
 
-      // 食事記録の保存（本番API送信 or ローカル保存）
+      // 食事記録の保存（詳細振り返り用に品目・アドバイス・詳細栄養素も保存）
       function doSave() {
         if (!st.res) return;
         var payloads = buildPayloads();
@@ -728,26 +737,48 @@
             ? results.map(function (res) { return res && ((res.response && res.response.name) || res.name); }).filter(Boolean)
             : [];
           var m = st.mult;
-          var sum = (st.res.items || []).filter(function (i) { return i.on !== false; }).reduce(function (a, it) {
+          var r1 = function (v) { return Math.round((Number(v) || 0) * 10) / 10; };
+          var active = (st.res.items || []).filter(function (i) { return i.on !== false; });
+          var sum = active.reduce(function (a, it) {
             a.kcal += (it.kcal || 0) * m;
             a.p += (it.proteinG || 0) * m;
             a.f += (it.fatG || 0) * m;
             a.c += (it.carbsG || 0) * m;
+            a.fb += (it.fiberG || 0) * m;
+            a.sg += (it.sugarG || 0) * m;
+            a.na += (it.sodiumMg || 0) * m;
             return a;
-          }, { kcal: 0, p: 0, f: 0, c: 0 });
+          }, { kcal: 0, p: 0, f: 0, c: 0, fb: 0, sg: 0, na: 0 });
+
+          var savedItems = active.map(function (it) {
+            return {
+              name: it.name || '料理',
+              grams: Math.round((it.estimatedGrams || 0) * m),
+              kcal: Math.round((it.kcal || 0) * m),
+              p: r1((it.proteinG || 0) * m),
+              f: r1((it.fatG || 0) * m),
+              c: r1((it.carbsG || 0) * m)
+            };
+          });
 
           st.logs.unshift({
             title: st.res.mealTitle,
+            tip: st.res.healthTip || '',
             meal: st.meal,
             time: st.time,
+            mult: m,
             thumb: st.img ? st.img.thumb : '',
             live: isLive,
             names: names,
+            items: savedItems,
             sum: {
               kcal: Math.round(sum.kcal),
-              p: Math.round(sum.p * 10) / 10,
-              f: Math.round(sum.f * 10) / 10,
-              c: Math.round(sum.c * 10) / 10
+              p: r1(sum.p),
+              f: r1(sum.f),
+              c: r1(sum.c),
+              fb: r1(sum.fb),
+              sg: r1(sum.sg),
+              na: Math.round(sum.na)
             },
             payloads: payloads
           });
@@ -804,7 +835,120 @@
         b.onclick = function () { handleImage(makeSample(b.dataset.sample)); };
       });
 
-      // 履歴一覧の描画（Google Health batchDelete 同時削除対応）
+      // 履歴の詳細振り返りモーダル表示（過去の記録にも後方互換対応）
+      function showHistoryDetail(idx) {
+        var l = st.logs[idx];
+        if (!l) return;
+        var mt = MEALS.find(function (m) { return m.id === l.meal; }) || MEALS[3];
+        var r1 = function (v) { return Math.round((Number(v) || 0) * 10) / 10; };
+
+        var fb = l.sum && typeof l.sum.fb === 'number' ? l.sum.fb : null;
+        var sg = l.sum && typeof l.sum.sg === 'number' ? l.sum.sg : null;
+        var naMg = l.sum && typeof l.sum.na === 'number' ? l.sum.na : null;
+
+        if ((fb === null || sg === null || naMg === null) && Array.isArray(l.payloads)) {
+          var pFb = 0, pSg = 0, pNaG = 0, hasNut = false;
+          l.payloads.forEach(function (p) {
+            var nuts = p && p.nutritionLog && p.nutritionLog.nutrients;
+            if (Array.isArray(nuts)) {
+              hasNut = true;
+              nuts.forEach(function (n) {
+                var g = (n.quantity && n.quantity.grams) || 0;
+                if (n.nutrient === 'DIETARY_FIBER') pFb += g;
+                if (n.nutrient === 'SUGAR') pSg += g;
+                if (n.nutrient === 'SODIUM') pNaG += g;
+              });
+            }
+          });
+          if (hasNut) {
+            if (fb === null) fb = r1(pFb);
+            if (sg === null) sg = r1(pSg);
+            if (naMg === null) naMg = Math.round(pNaG * 1000);
+          }
+        }
+        var saltG = naMg !== null ? r1((naMg * 2.54) / 1000) : null;
+
+        var dishItems = Array.isArray(l.items) && l.items.length ? l.items : [];
+        if (!dishItems.length && Array.isArray(l.payloads) && l.payloads.length) {
+          dishItems = l.payloads.map(function (p) {
+            var nl = (p && p.nutritionLog) || {};
+            var pVal = 0;
+            (nl.nutrients || []).forEach(function (n) {
+              if (n.nutrient === 'PROTEIN' && n.quantity) pVal = n.quantity.grams || 0;
+            });
+            return {
+              name: nl.foodDisplayName || l.title,
+              grams: 0,
+              kcal: (nl.energy && nl.energy.kcal) || 0,
+              p: r1(pVal),
+              f: r1((nl.totalFat && nl.totalFat.grams) || 0),
+              c: r1((nl.totalCarbohydrate && nl.totalCarbohydrate.grams) || 0)
+            };
+          });
+        }
+
+        var multLabel = l.mult && l.mult !== 1 ? ' ・ 量 ' + Math.round(l.mult * 100) + '%' : '';
+
+        var html = '<div class="space-y-3.5">';
+        if (l.thumb) {
+          html += '<img src="' + l.thumb + '" alt="' + esc(l.title) + '" class="w-full max-h-56 object-cover rounded-2xl border border-slate-200" />';
+        }
+
+        html += '<div class="space-y-1">' +
+          '<div class="flex flex-wrap items-center gap-1.5 text-[11px]">' +
+          '<span class="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-bold">' + mt.label + '</span>' +
+          '<span class="px-2 py-0.5 rounded-md font-bold ' + (l.live ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700') + '">' + (l.live ? '☁️ Google Health 同期済' : '📱 スマホ内保存') + '</span>' +
+          '<span class="text-slate-400 ml-auto">' + esc((l.time || '').replace('T', ' ')) + multLabel + '</span>' +
+          '</div>' +
+          '<div class="text-base font-extrabold text-slate-900 leading-snug break-words">' + esc(l.title) + '</div>' +
+          '</div>';
+
+        html += '<div class="bg-emerald-50 border border-emerald-200 rounded-2xl p-3.5 space-y-2.5">' +
+          '<div class="flex justify-between items-baseline">' +
+          '<span class="text-xs font-bold text-emerald-900">合計エネルギー</span>' +
+          '<div><span class="text-2xl font-extrabold text-emerald-700">' + (l.sum ? l.sum.kcal : 0) + '</span> <span class="text-xs font-bold text-emerald-700">kcal</span></div>' +
+          '</div>' +
+          '<div class="grid grid-cols-3 gap-1.5 text-center">' +
+          '<div class="bg-white p-2 rounded-xl"><div class="text-[10px] text-slate-400">たんぱく質</div><div class="font-bold text-blue-600">' + (l.sum ? l.sum.p : 0) + 'g</div></div>' +
+          '<div class="bg-white p-2 rounded-xl"><div class="text-[10px] text-slate-400">脂質</div><div class="font-bold text-amber-600">' + (l.sum ? l.sum.f : 0) + 'g</div></div>' +
+          '<div class="bg-white p-2 rounded-xl"><div class="text-[10px] text-slate-400">炭水化物</div><div class="font-bold text-emerald-600">' + (l.sum ? l.sum.c : 0) + 'g</div></div>' +
+          '</div>';
+
+        if (fb !== null || sg !== null || saltG !== null) {
+          html += '<div class="grid grid-cols-3 gap-1.5 text-center">' +
+            '<div class="bg-white/80 p-1.5 rounded-xl"><div class="text-[10px] text-slate-400">食物繊維</div><div class="font-bold text-purple-600">' + (fb !== null ? fb + 'g' : '-') + '</div></div>' +
+            '<div class="bg-white/80 p-1.5 rounded-xl"><div class="text-[10px] text-slate-400">糖類</div><div class="font-bold text-slate-700">' + (sg !== null ? sg + 'g' : '-') + '</div></div>' +
+            '<div class="bg-white/80 p-1.5 rounded-xl"><div class="text-[10px] text-slate-400">食塩相当量</div><div class="font-bold text-rose-600">' + (saltG !== null ? saltG + 'g' : '-') + '</div></div>' +
+            '</div>';
+        }
+        html += '</div>';
+
+        if (l.tip) {
+          html += '<div class="bg-slate-50 border border-slate-200 rounded-2xl p-3 text-slate-700 leading-relaxed">' +
+            '<span class="font-bold text-slate-900">💡 AIアドバイス：</span>' + esc(l.tip) + '</div>';
+        }
+
+        if (dishItems.length) {
+          html += '<div class="space-y-1.5">' +
+            '<div class="font-bold text-slate-700">🍽️ 記録された料理の内訳</div>' +
+            '<div class="divide-y divide-slate-100 border border-slate-200 rounded-2xl overflow-hidden">' +
+            dishItems.map(function (it) {
+              return '<div class="p-2.5 bg-white flex justify-between items-center gap-2">' +
+                '<div class="min-w-0">' +
+                '<div class="font-bold text-slate-800 leading-snug break-words">' + esc(it.name) + (it.grams ? ' <span class="font-normal text-slate-400">(約' + it.grams + 'g)</span>' : '') + '</div>' +
+                '<div class="text-[11px] text-slate-400">P:' + it.p + 'g / F:' + it.f + 'g / C:' + it.c + 'g</div>' +
+                '</div>' +
+                '<div class="font-bold text-slate-900 shrink-0">' + it.kcal + ' kcal</div>' +
+                '</div>';
+            }).join('') +
+            '</div></div>';
+        }
+
+        html += '</div>';
+        showModal('🍽️ 食事の振り返り', html);
+      }
+
+      // 履歴一覧の描画（カードタップで詳細振り返り ＋ Google Health batchDelete 同時削除対応）
       function renderHistory() {
         var box = $('view-history');
         if (!st.logs.length) {
@@ -815,21 +959,29 @@
           var mt = MEALS.find(function (m) { return m.id === l.meal; }) || MEALS[3];
           var canCloudDel = l.live && l.names && l.names.length > 0;
           return '<div class="bg-white rounded-2xl p-3.5 border border-slate-200 space-y-2">' +
-            '<div class="flex gap-3 items-center">' +
-            (l.thumb ? '<img src="' + l.thumb + '" class="w-14 h-14 rounded-xl object-cover shrink-0"/>' : '<div class="w-14 h-14 rounded-xl bg-slate-100 flex items-center justify-center text-xl">🍽️</div>') +
-            '<div class="flex-1 min-w-0">' +
-            '<div class="text-[11px] text-slate-400">' + mt.label + ' ・ ' + (l.time || '').replace('T', ' ') + (l.live ? ' ・ ☁️同期済' : '') + '</div>' +
-            '<div class="text-sm font-bold truncate">' + l.title + '</div>' +
-            '<div class="text-xs font-bold">' + l.sum.kcal + ' kcal <span class="font-normal text-slate-500">(P:' + l.sum.p + 'g F:' + l.sum.f + 'g C:' + l.sum.c + 'g)</span></div>' +
-            '</div></div>' +
-            '<div class="flex justify-between pt-2 border-t border-slate-100 text-xs">' +
-            '<button type="button" data-j="' + i + '" class="h-json text-slate-500">JSON表示</button>' +
+            '<div data-v="' + i + '" class="h-detail flex gap-3 items-center cursor-pointer active:opacity-70 transition">' +
+            (l.thumb ? '<img src="' + l.thumb + '" class="w-14 h-14 rounded-xl object-cover shrink-0"/>' : '<div class="w-14 h-14 rounded-xl bg-slate-100 flex items-center justify-center text-xl shrink-0">🍽️</div>') +
+            '<div class="flex-1 min-w-0 space-y-0.5">' +
+            '<div class="text-[11px] text-slate-400">' + mt.label + ' ・ ' + esc((l.time || '').replace('T', ' ')) + (l.live ? ' ・ ☁️同期済' : '') + '</div>' +
+            '<div class="text-sm font-bold leading-snug break-words">' + esc(l.title) + '</div>' +
+            '<div class="text-xs font-bold">' + (l.sum ? l.sum.kcal : 0) + ' kcal <span class="font-normal text-slate-500">(P:' + (l.sum ? l.sum.p : 0) + 'g F:' + (l.sum ? l.sum.f : 0) + 'g C:' + (l.sum ? l.sum.c : 0) + 'g)</span></div>' +
+            '</div>' +
+            '<div class="text-slate-300 text-lg font-bold shrink-0">›</div></div>' +
+            '<div class="flex justify-between items-center pt-2 border-t border-slate-100 text-xs">' +
+            '<div class="flex gap-3">' +
+            '<button type="button" data-v="' + i + '" class="h-detail text-emerald-600 font-bold">詳細を見る</button>' +
+            '<button type="button" data-j="' + i + '" class="h-json text-slate-400">JSON</button>' +
+            '</div>' +
             '<button type="button" data-d="' + i + '" class="h-del text-rose-500 font-bold">' + (canCloudDel ? '☁️ Healthからも削除' : '削除') + '</button></div></div>';
         }).join('');
 
+        box.querySelectorAll('.h-detail').forEach(function (el) {
+          el.onclick = function () { showHistoryDetail(Number(el.dataset.v)); };
+        });
+
         box.querySelectorAll('.h-json').forEach(function (b) {
           b.onclick = function () {
-            showModal('送信JSON', '<pre class="bg-slate-900 text-emerald-300 p-3 rounded-xl overflow-x-auto">' + JSON.stringify(st.logs[b.dataset.j].payloads, null, 2) + '</pre>');
+            showModal('送信JSON', '<pre class="bg-slate-900 text-emerald-300 p-3 rounded-xl overflow-x-auto">' + esc(JSON.stringify(st.logs[b.dataset.j].payloads, null, 2)) + '</pre>');
           };
         });
 
