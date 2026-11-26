@@ -18,7 +18,7 @@
 <body class="bg-slate-50 text-slate-900 min-h-screen pb-12">
 
   <!-- トースト通知 -->
-  <div id="toast" class="hidden fixed top-3 left-1/2 -translate-x-1/2 z-50 w-[92%] max-w-md px-4 py-3 rounded-2xl shadow-lg border text-sm font-medium bg-slate-900 text-white"></div>
+  <div id="toast" class="hidden fixed top-3 left-1/2 -translate-x-1/2 z-50 w-[92%] max-w-md px-4 py-3 rounded-2xl shadow-lg border text-xs leading-relaxed font-medium bg-slate-900 text-white break-words"></div>
 
   <!-- ヘッダー＆上部ナビゲーション -->
   <header class="sticky top-0 z-30 bg-white border-b border-slate-200 shadow-xs">
@@ -217,7 +217,499 @@
       var GH_URL = 'https://health.googleapis.com/v4/users/me/dataTypes/nutrition-log/dataPoints';
       var GH_DEL_URL = 'https://health.googleapis.com/v4/users/me/dataTypes/nutrition-log/dataPoints:batchDelete';
       var GH_SCOPE = 'https://www.googleapis.com/auth/googlehealth.nutrition.writeonly';
-// ... existing code ... -->
+      var GEMINI_MODELS = ['gemini-3-flash-preview', 'gemini-2.5-flash', 'gemini-2.0-flash'];
+
+      var MEALS = [
+        { id: 'BREAKFAST', label: '🌅 朝食' },
+        { id: 'LUNCH', label: '☀️ 昼食' },
+        { id: 'DINNER', label: '🌙 夕食' },
+        { id: 'SNACK', label: '☕ 間食' }
+      ];
+      var PORTIONS = [
+        { v: 0.8, label: '少なめ 80%' },
+        { v: 1.0, label: '普通 100%' },
+        { v: 1.25, label: '大盛り 125%' }
+      ];
+
+      function $(id) { return document.getElementById(id); }
+
+      function loadJson(key, fallback) {
+        try {
+          var v = localStorage.getItem(key);
+          return v ? JSON.parse(v) : fallback;
+        } catch (e) {
+          return fallback;
+        }
+      }
+
+      var st = {
+        tab: 'capture',
+        cfg: Object.assign(
+          { apikey: '', mode: 'demo', clientId: '', token: '', split: false, auto: false, target: 2000 },
+          loadJson('sh_cfg', {})
+        ),
+        logs: loadJson('sh_logs', []),
+        img: null,
+        res: null,
+        meal: 'LUNCH',
+        time: '',
+        mult: 1.0,
+        pwaEvent: null
+      };
+
+      function saveCfg() {
+        try { localStorage.setItem('sh_cfg', JSON.stringify(st.cfg)); } catch (e) {}
+      }
+
+      function saveLogs() {
+        try {
+          localStorage.setItem('sh_logs', JSON.stringify(st.logs));
+        } catch (e) {
+          try {
+            var trimmed = st.logs.map(function (x, i) { return i >= 12 ? Object.assign({}, x, { thumb: '' }) : x; });
+            localStorage.setItem('sh_logs', JSON.stringify(trimmed));
+          } catch (e2) {}
+        }
+      }
+
+      var toastTimer = null;
+      function toast(msg, isErr) {
+        var el = $('toast');
+        el.textContent = msg;
+        el.className = 'fixed top-3 left-1/2 -translate-x-1/2 z-50 w-[92%] max-w-md px-4 py-3 rounded-2xl shadow-lg border text-xs leading-relaxed font-bold break-words ' +
+          (isErr ? 'bg-rose-600 text-white border-rose-500' : 'bg-slate-900 text-white border-slate-800');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(function () { el.classList.add('hidden'); }, isErr ? 7000 : 3500);
+      }
+
+      function showModal(title, html) {
+        $('modal-title').textContent = title;
+        $('modal-body').innerHTML = html;
+        $('modal').classList.remove('hidden');
+      }
+      $('modal-close').onclick = function () { $('modal').classList.add('hidden'); };
+      $('modal').onclick = function (e) { if (e.target === $('modal')) $('modal').classList.add('hidden'); };
+
+      function nowLocal() {
+        var d = new Date();
+        var p = function (n) { return String(n).padStart(2, '0'); };
+        return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes());
+      }
+
+      function detectMeal() {
+        var h = new Date().getHours();
+        if (h >= 4 && h <= 10) return 'BREAKFAST';
+        if (h >= 11 && h <= 15) return 'LUNCH';
+        if (h >= 17 && h <= 22) return 'DINNER';
+        return 'SNACK';
+      }
+
+      function setTab(t) {
+        st.tab = t;
+        ['capture', 'history', 'settings'].forEach(function (k) {
+          $('view-' + k).classList.toggle('hidden', k !== t);
+          var b = $('tab-btn-' + k);
+          b.className = 'py-2.5 text-center border-b-2 ' + (k === t ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-slate-500');
+        });
+        if (t === 'history') renderHistory();
+      }
+      $('tab-btn-capture').onclick = function () { setTab('capture'); };
+      $('tab-btn-history').onclick = function () { setTab('history'); };
+      $('tab-btn-settings').onclick = function () { setTab('settings'); };
+      $('btn-go-settings').onclick = function () { setTab('settings'); };
+
+      function syncUI() {
+        $('key-alert').classList.toggle('hidden', Boolean(st.cfg.apikey.trim()));
+        var liveReady = st.cfg.mode === 'live' && st.cfg.token.trim();
+        var badge = $('badge-mode');
+        badge.textContent = liveReady ? '● 連携中' : (st.cfg.mode === 'live' ? '● 未認証' : '● デモ');
+        badge.className = 'px-2.5 py-1.5 rounded-full text-xs font-bold border ' +
+          (liveReady ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-amber-50 border-amber-200 text-amber-700');
+
+        $('set-apikey').value = st.cfg.apikey;
+        $('set-clientid').value = st.cfg.clientId;
+        $('set-token').value = st.cfg.token;
+        $('set-target').value = st.cfg.target;
+        $('chk-split').checked = st.cfg.split;
+        $('chk-autosend').checked = st.cfg.auto;
+
+        $('live-fields').classList.toggle('hidden', st.cfg.mode !== 'live');
+        $('mode-demo').className = 'p-3 rounded-2xl text-left font-bold ' + (st.cfg.mode === 'demo' ? 'border-2 border-emerald-600 bg-emerald-50' : 'border border-slate-200');
+        $('mode-live').className = 'p-3 rounded-2xl text-left font-bold ' + (st.cfg.mode === 'live' ? 'border-2 border-emerald-600 bg-emerald-50' : 'border border-slate-200');
+
+        renderSummary();
+      }
+
+      function renderSummary() {
+        var today = nowLocal().slice(0, 10);
+        var s = st.logs.filter(function (l) { return (l.time || '').indexOf(today) === 0; }).reduce(function (a, l) {
+          a.n += 1;
+          a.kcal += (l.sum && l.sum.kcal) || 0;
+          a.p += (l.sum && l.sum.p) || 0;
+          a.f += (l.sum && l.sum.f) || 0;
+          a.c += (l.sum && l.sum.c) || 0;
+          return a;
+        }, { n: 0, kcal: 0, p: 0, f: 0, c: 0 });
+
+        $('hist-count').textContent = st.logs.length;
+        $('sum-meals').textContent = s.n;
+        $('sum-target').textContent = st.cfg.target || 2000;
+        $('sum-kcal').textContent = Math.round(s.kcal).toLocaleString();
+        $('sum-p').textContent = Math.round(s.p * 10) / 10;
+        $('sum-f').textContent = Math.round(s.f * 10) / 10;
+        $('sum-c').textContent = Math.round(s.c * 10) / 10;
+        var pct = Math.min(100, Math.round((s.kcal / (st.cfg.target || 2000)) * 100));
+        $('sum-bar').style.width = pct + '%';
+      }
+
+      // 設定入力イベント
+      $('set-apikey').oninput = function (e) { st.cfg.apikey = e.target.value; saveCfg(); syncUI(); };
+      $('set-clientid').oninput = function (e) { st.cfg.clientId = e.target.value; saveCfg(); };
+      $('set-token').oninput = function (e) { st.cfg.token = e.target.value; saveCfg(); syncUI(); };
+      $('set-target').oninput = function (e) { st.cfg.target = Number(e.target.value) || 2000; saveCfg(); renderSummary(); };
+      $('chk-split').onchange = function (e) { st.cfg.split = e.target.checked; saveCfg(); };
+      $('chk-autosend').onchange = function (e) { st.cfg.auto = e.target.checked; saveCfg(); };
+      $('mode-demo').onclick = function () { st.cfg.mode = 'demo'; saveCfg(); syncUI(); };
+      $('mode-live').onclick = function () { st.cfg.mode = 'live'; saveCfg(); syncUI(); };
+
+      // Google OAuth 認証
+      $('btn-oauth').onclick = function () {
+        var cid = st.cfg.clientId.trim();
+        if (!cid) { toast('クライアントIDを入力してください', true); return; }
+        function runAuth() {
+          try {
+            var tc = window.google.accounts.oauth2.initTokenClient({
+              client_id: cid,
+              scope: GH_SCOPE,
+              include_granted_scopes: false,
+              callback: function (r) {
+                if (r && r.access_token) {
+                  st.cfg.token = r.access_token;
+                  st.cfg.mode = 'live';
+                  saveCfg();
+                  syncUI();
+                  toast('Google Health の認証に成功しました！');
+                } else {
+                  toast('認証がキャンセルされたか失敗しました', true);
+                }
+              }
+            });
+            tc.requestAccessToken();
+          } catch (e) {
+            toast('OAuthエラー: ' + e.message, true);
+          }
+        }
+        if (window.google && window.google.accounts && window.google.accounts.oauth2) {
+          runAuth();
+        } else {
+          var s = document.createElement('script');
+          s.src = 'https://accounts.google.com/gsi/client';
+          s.onload = runAuth;
+          s.onerror = function () { toast('Google認証スクリプトの読込に失敗しました', true); };
+          document.body.appendChild(s);
+        }
+      };
+
+      // PWA インストール案内
+      window.addEventListener('beforeinstallprompt', function (e) {
+        e.preventDefault();
+        st.pwaEvent = e;
+      });
+      $('btn-pwa').onclick = function () {
+        if (st.pwaEvent) {
+          st.pwaEvent.prompt();
+          st.pwaEvent = null;
+          return;
+        }
+        showModal('📱 ホーム画面に追加する方法',
+          '<div class="space-y-2 leading-relaxed">' +
+          '<p><b>🤖 Android (Chrome):</b> 右上の「︙」→「ホーム画面に追加」または「アプリをインストール」をタップ</p>' +
+          '<p><b>🍎 iPhone (Safari):</b> 画面下の共有アイコン →「ホーム画面に追加」をタップ</p>' +
+          '</div>');
+      };
+
+      // 画像リサイズ・圧縮
+      function compress(fileOrUrl) {
+        return new Promise(function (resolve, reject) {
+          var img = new Image();
+          img.onload = function () {
+            var sc = Math.min(1, 1024 / img.width);
+            var c = document.createElement('canvas');
+            c.width = Math.round(img.width * sc);
+            c.height = Math.round(img.height * sc);
+            c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+            var url = c.toDataURL('image/jpeg', 0.82);
+
+            var tsc = Math.min(1, 200 / img.width);
+            var tc = document.createElement('canvas');
+            tc.width = Math.round(img.width * tsc);
+            tc.height = Math.round(img.height * tsc);
+            tc.getContext('2d').drawImage(img, 0, 0, tc.width, tc.height);
+            resolve({ url: url, thumb: tc.toDataURL('image/jpeg', 0.65), b64: url.split(',')[1] });
+          };
+          img.onerror = function () { reject(new Error('画像の読み込みに失敗しました')); };
+          if (typeof fileOrUrl === 'string') {
+            img.src = fileOrUrl;
+          } else {
+            var fr = new FileReader();
+            fr.onload = function (e) { img.src = e.target.result; };
+            fr.onerror = function () { reject(new Error('ファイルの読取に失敗しました')); };
+            fr.readAsDataURL(fileOrUrl);
+          }
+        });
+      }
+
+      // テスト用サンプル食事画像生成
+      function makeSample(kind) {
+        var c = document.createElement('canvas');
+        c.width = 640; c.height = 480;
+        var g = c.getContext('2d');
+        g.fillStyle = '#f5ebe0'; g.fillRect(0, 0, 640, 480);
+        g.fillStyle = '#ffffff'; g.fillRect(30, 30, 580, 420);
+        g.fillStyle = '#1e293b'; g.font = 'bold 26px sans-serif'; g.textAlign = 'center';
+        if (kind === 'salmon') {
+          g.fillStyle = '#fb7185'; g.fillRect(100, 110, 200, 70);
+          g.fillStyle = '#f1f5f9'; g.beginPath(); g.arc(190, 320, 75, 0, 7); g.fill();
+          g.fillStyle = '#d97706'; g.beginPath(); g.arc(430, 320, 70, 0, 7); g.fill();
+          g.fillStyle = '#15803d'; g.beginPath(); g.arc(440, 150, 55, 0, 7); g.fill();
+          g.fillStyle = '#0f172a';
+          g.fillText('焼き鮭定食（焼き鮭・白米160g・味噌汁・おひたし）', 320, 430);
+        } else if (kind === 'salad') {
+          g.fillStyle = '#22c55e'; g.beginPath(); g.arc(320, 230, 150, 0, 7); g.fill();
+          g.fillStyle = '#eab308'; g.fillRect(230, 160, 110, 80);
+          g.fillStyle = '#84cc16'; g.beginPath(); g.arc(390, 220, 45, 0, 7); g.fill();
+          g.fillStyle = '#0f172a';
+          g.fillText('グリルチキンとアボカド・ゆで卵のパワーサラダ', 320, 430);
+        } else {
+          g.fillStyle = '#ffffff'; g.beginPath(); g.ellipse(230, 230, 110, 110, 0, 0, 7); g.fill();
+          g.fillStyle = '#78350f'; g.beginPath(); g.ellipse(390, 230, 130, 110, 0, 0, 7); g.fill();
+          g.fillStyle = '#d97706'; g.fillRect(250, 175, 150, 100);
+          g.fillStyle = '#0f172a';
+          g.fillText('ロースカツカレー（普通盛り）', 320, 430);
+        }
+        return c.toDataURL('image/jpeg', 0.9);
+      }
+
+      // Gemini API 呼び出し（404時は自動フォールバック）
+      function callGemini(b64) {
+        var key = st.cfg.apikey.trim();
+        if (!key) return Promise.reject(new Error('「⚙️ 連携設定」から Gemini API キーを設定してください'));
+
+        var body = {
+          contents: [{
+            role: 'user',
+            parts: [
+              { text: '管理栄養士としてこの食事画像を解析し、写っている全料理の推定重量(g)・カロリー(kcal)・タンパク質(g)・脂質(g)・炭水化物(g)・食物繊維(g)・糖類(g)・ナトリウム(mg)を日本語のJSONで返してください。' },
+              { inlineData: { mimeType: 'image/jpeg', data: b64 } }
+            ]
+          }],
+          generationConfig: {
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: 'OBJECT',
+              properties: {
+                mealTitle: { type: 'STRING' },
+                confidenceScore: { type: 'NUMBER' },
+                healthTip: { type: 'STRING' },
+                items: {
+                  type: 'ARRAY',
+                  items: {
+                    type: 'OBJECT',
+                    properties: {
+                      name: { type: 'STRING' },
+                      estimatedGrams: { type: 'NUMBER' },
+                      kcal: { type: 'NUMBER' },
+                      proteinG: { type: 'NUMBER' },
+                      fatG: { type: 'NUMBER' },
+                      carbsG: { type: 'NUMBER' },
+                      fiberG: { type: 'NUMBER' },
+                      sugarG: { type: 'NUMBER' },
+                      sodiumMg: { type: 'NUMBER' }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        };
+
+        function tryModel(idx) {
+          var model = GEMINI_MODELS[idx];
+          var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + encodeURIComponent(key);
+          return fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+          }).then(function (r) {
+            if (r.status === 404 && idx + 1 < GEMINI_MODELS.length) {
+              return tryModel(idx + 1);
+            }
+            if (!r.ok) {
+              return r.text().then(function (t) {
+                throw new Error('Gemini API エラー (' + r.status + '): ' + t.slice(0, 180));
+              });
+            }
+            return r.json();
+          });
+        }
+
+        return tryModel(0).then(function (j) {
+          var txt = j && j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts && j.candidates[0].content.parts[0] && j.candidates[0].content.parts[0].text;
+          if (!txt) throw new Error('AIから解析結果が返りませんでした');
+          return JSON.parse(txt);
+        });
+      }
+
+      // Google Health API v4 リクエストボディ構築（servingなし・公式仕様準拠）
+      function buildPayloads() {
+        var d = st.time ? new Date(st.time) : new Date();
+        var end = new Date(d.getTime() + 25 * 60000);
+        var off = (-d.getTimezoneOffset() * 60) + 's';
+        var iv = { startTime: d.toISOString(), startUtcOffset: off, endTime: end.toISOString(), endUtcOffset: off };
+        var r1 = function (v) { return Math.round((Number(v) || 0) * 10) / 10; };
+        var r3 = function (v) { return Math.round((Number(v) || 0) * 1000) / 1000; };
+        var m = st.mult;
+        var active = (st.res.items || []).filter(function (i) { return i.on !== false; });
+
+        if (st.cfg.split && active.length > 1) {
+          return active.map(function (it) {
+            var f = r1((it.fatG || 0) * m);
+            return {
+              nutritionLog: {
+                interval: iv,
+                foodDisplayName: it.name,
+                mealType: st.meal,
+                energy: { kcal: Math.round((it.kcal || 0) * m) },
+                energyFromFat: { kcal: Math.round(f * 9) },
+                totalCarbohydrate: { grams: r1((it.carbsG || 0) * m) },
+                totalFat: { grams: f },
+                nutrients: [
+                  { nutrient: 'PROTEIN', quantity: { grams: r1((it.proteinG || 0) * m) } },
+                  { nutrient: 'DIETARY_FIBER', quantity: { grams: r1((it.fiberG || 0) * m) } },
+                  { nutrient: 'SUGAR', quantity: { grams: r1((it.sugarG || 0) * m) } },
+                  { nutrient: 'SODIUM', quantity: { grams: r3(((it.sodiumMg || 0) * m) / 1000) } }
+                ]
+              }
+            };
+          });
+        }
+
+        var tot = active.reduce(function (a, it) {
+          a.kcal += (it.kcal || 0) * m;
+          a.p += (it.proteinG || 0) * m;
+          a.f += (it.fatG || 0) * m;
+          a.c += (it.carbsG || 0) * m;
+          a.fb += (it.fiberG || 0) * m;
+          a.sg += (it.sugarG || 0) * m;
+          a.na += (it.sodiumMg || 0) * m;
+          return a;
+        }, { kcal: 0, p: 0, f: 0, c: 0, fb: 0, sg: 0, na: 0 });
+
+        return [{
+          nutritionLog: {
+            interval: iv,
+            foodDisplayName: st.res.mealTitle || '食事の記録',
+            mealType: st.meal,
+            energy: { kcal: Math.round(tot.kcal) },
+            energyFromFat: { kcal: Math.round(tot.f * 9) },
+            totalCarbohydrate: { grams: r1(tot.c) },
+            totalFat: { grams: r1(tot.f) },
+            nutrients: [
+              { nutrient: 'PROTEIN', quantity: { grams: r1(tot.p) } },
+              { nutrient: 'DIETARY_FIBER', quantity: { grams: r1(tot.fb) } },
+              { nutrient: 'SUGAR', quantity: { grams: r1(tot.sg) } },
+              { nutrient: 'SODIUM', quantity: { grams: r3(tot.na / 1000) } }
+            ]
+          }
+        }];
+      }
+
+      // 解析結果の描画
+      function renderResult() {
+        $('box-idle').classList.add('hidden');
+        $('box-loading').classList.add('hidden');
+        $('box-result').classList.remove('hidden');
+
+        $('res-img').src = st.img ? st.img.url : '';
+        $('res-conf').textContent = 'AI推定度 ' + (st.res.confidenceScore || 90) + '%';
+        $('res-title').value = st.res.mealTitle || '食事の記録';
+        $('res-tip').textContent = '💡 ' + (st.res.healthTip || 'バランスよく食べましょう');
+        $('res-time').value = st.time;
+
+        $('meal-types').innerHTML = MEALS.map(function (m) {
+          return '<button type="button" data-m="' + m.id + '" class="m-btn py-2 rounded-xl text-xs font-bold border ' +
+            (st.meal === m.id ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-600 border-slate-200') + '">' + m.label + '</button>';
+        }).join('');
+        $('meal-types').querySelectorAll('.m-btn').forEach(function (b) {
+          b.onclick = function () { st.meal = b.dataset.m; renderResult(); };
+        });
+
+        $('portion-btns').innerHTML = PORTIONS.map(function (p) {
+          return '<button type="button" data-v="' + p.v + '" class="p-btn py-2 rounded-xl text-xs font-bold border ' +
+            (st.mult === p.v ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-200') + '">' + p.label + '</button>';
+        }).join('');
+        $('portion-btns').querySelectorAll('.p-btn').forEach(function (b) {
+          b.onclick = function () { st.mult = Number(b.dataset.v); renderResult(); };
+        });
+
+        var m = st.mult;
+        var active = (st.res.items || []).filter(function (i) { return i.on !== false; });
+        var tot = active.reduce(function (a, it) {
+          a.kcal += (it.kcal || 0) * m;
+          a.p += (it.proteinG || 0) * m;
+          a.f += (it.fatG || 0) * m;
+          a.c += (it.carbsG || 0) * m;
+          a.fb += (it.fiberG || 0) * m;
+          return a;
+        }, { kcal: 0, p: 0, f: 0, c: 0, fb: 0 });
+
+        $('res-kcal').textContent = Math.round(tot.kcal);
+        $('res-p').textContent = (Math.round(tot.p * 10) / 10) + 'g';
+        $('res-f').textContent = (Math.round(tot.f * 10) / 10) + 'g';
+        $('res-c').textContent = (Math.round(tot.c * 10) / 10) + 'g';
+        $('res-fb').textContent = (Math.round(tot.fb * 10) / 10) + 'g';
+
+        $('res-items').innerHTML = (st.res.items || []).map(function (it, idx) {
+          var on = it.on !== false;
+          return '<div data-i="' + idx + '" class="it-row p-3 flex justify-between items-center gap-2 cursor-pointer ' + (on ? 'bg-white' : 'bg-slate-50 opacity-50') + '">' +
+            '<div class="min-w-0"><div class="text-xs font-bold">' + (on ? '☑️ ' : '⬜ ') + it.name + '</div>' +
+            '<div class="text-[11px] text-slate-400">P:' + Math.round((it.proteinG || 0) * m) + 'g / F:' + Math.round((it.fatG || 0) * m) + 'g / C:' + Math.round((it.carbsG || 0) * m) + 'g</div></div>' +
+            '<div class="text-xs font-bold shrink-0">' + Math.round((it.kcal || 0) * m) + ' kcal</div></div>';
+        }).join('');
+        $('res-items').querySelectorAll('.it-row').forEach(function (el) {
+          el.onclick = function () {
+            var it = st.res.items[Number(el.dataset.i)];
+            it.on = (it.on === false);
+            renderResult();
+          };
+        });
+      }
+
+      $('res-title').oninput = function (e) { if (st.res) st.res.mealTitle = e.target.value; };
+      $('res-time').onchange = function (e) { st.time = e.target.value; };
+      $('btn-reset').onclick = function () {
+        st.img = null; st.res = null;
+        $('box-result').classList.add('hidden');
+        $('box-idle').classList.remove('hidden');
+      };
+      $('btn-json').onclick = function () {
+        showModal('Google Health API v4 JSON',
+          '<pre class="bg-slate-900 text-emerald-300 p-3 rounded-xl overflow-x-auto">' + JSON.stringify(buildPayloads(), null, 2) + '</pre>');
+      };
+
+      // 食事記録の保存（本番API送信 or ローカル保存）
+      function doSave() {
+        if (!st.res) return;
+        var payloads = buildPayloads();
+        var isLive = st.cfg.mode === 'live';
+        if (isLive && !st.cfg.token.trim()) {
+          toast('本番送信には「⚙️ 連携設定」で認証が必要です', true);
+          return;
+        }
+
+        $('btn-save').disabled = true;
+        $('btn-save').textContent = '送信中...';
+
         var req = isLive
           ? Promise.all(payloads.map(function (b) {
               return fetch(GH_URL, {
@@ -237,7 +729,10 @@
             : [];
           var m = st.mult;
           var sum = (st.res.items || []).filter(function (i) { return i.on !== false; }).reduce(function (a, it) {
-            a.kcal += (it.kcal || 0) * m; a.p += (it.proteinG || 0) * m; a.f += (it.fatG || 0) * m; a.c += (it.carbsG || 0) * m;
+            a.kcal += (it.kcal || 0) * m;
+            a.p += (it.proteinG || 0) * m;
+            a.f += (it.fatG || 0) * m;
+            a.c += (it.carbsG || 0) * m;
             return a;
           }, { kcal: 0, p: 0, f: 0, c: 0 });
 
@@ -248,10 +743,74 @@
             thumb: st.img ? st.img.thumb : '',
             live: isLive,
             names: names,
-            sum: { kcal: Math.round(sum.kcal), p: Math.round(sum.p * 10) / 10, f: Math.round(sum.f * 10) / 10, c: Math.round(sum.c * 10) / 10 },
+            sum: {
+              kcal: Math.round(sum.kcal),
+              p: Math.round(sum.p * 10) / 10,
+              f: Math.round(sum.f * 10) / 10,
+              c: Math.round(sum.c * 10) / 10
+            },
             payloads: payloads
           });
-// ... existing code ... -->
+          saveLogs();
+          renderSummary();
+          toast(isLive ? 'Google Health に記録しました！' : 'スマホに記録しました！');
+          st.img = null; st.res = null;
+          $('box-result').classList.add('hidden');
+          $('box-idle').classList.remove('hidden');
+          setTab('history');
+        }).catch(function (e) {
+          toast(e.message || '記録に失敗しました', true);
+        }).finally(function () {
+          $('btn-save').disabled = false;
+          $('btn-save').textContent = '✅ この食事を記録する';
+        });
+      }
+      $('btn-save').onclick = doSave;
+
+      // 画像取り込み＆解析フロー
+      function handleImage(fileOrUrl) {
+        $('box-idle').classList.add('hidden');
+        $('box-result').classList.add('hidden');
+        $('box-loading').classList.remove('hidden');
+        st.meal = detectMeal();
+        st.time = nowLocal();
+        st.mult = 1.0;
+
+        compress(fileOrUrl).then(function (img) {
+          st.img = img;
+          return callGemini(img.b64);
+        }).then(function (ai) {
+          st.res = ai;
+          (st.res.items || []).forEach(function (i) { i.on = true; });
+          renderResult();
+          if (st.cfg.auto) {
+            doSave();
+          } else {
+            toast('AI解析が完了しました！');
+          }
+        }).catch(function (e) {
+          $('box-loading').classList.add('hidden');
+          $('box-idle').classList.remove('hidden');
+          toast(e.message || '解析に失敗しました', true);
+        });
+      }
+
+      // カメラ・ギャラリー・サンプルボタン
+      $('btn-cam').onclick = function () { $('inp-cam').click(); };
+      $('btn-gal').onclick = function () { $('inp-gal').click(); };
+      $('inp-cam').onchange = function (e) { if (e.target.files[0]) handleImage(e.target.files[0]); e.target.value = ''; };
+      $('inp-gal').onchange = function (e) { if (e.target.files[0]) handleImage(e.target.files[0]); e.target.value = ''; };
+      document.querySelectorAll('.btn-sample').forEach(function (b) {
+        b.onclick = function () { handleImage(makeSample(b.dataset.sample)); };
+      });
+
+      // 履歴一覧の描画（Google Health batchDelete 同時削除対応）
+      function renderHistory() {
+        var box = $('view-history');
+        if (!st.logs.length) {
+          box.innerHTML = '<div class="bg-white rounded-3xl p-8 text-center border border-slate-200 text-xs text-slate-500">まだ食事の記録がありません</div>';
+          return;
+        }
         box.innerHTML = st.logs.map(function (l, i) {
           var mt = MEALS.find(function (m) { return m.id === l.meal; }) || MEALS[3];
           var canCloudDel = l.live && l.names && l.names.length > 0;
@@ -269,8 +828,11 @@
         }).join('');
 
         box.querySelectorAll('.h-json').forEach(function (b) {
-          b.onclick = function () { showModal('送信JSON', '<pre class="bg-slate-900 text-emerald-300 p-3 rounded-xl overflow-x-auto">' + JSON.stringify(st.logs[b.dataset.j].payloads, null, 2) + '</pre>'); };
+          b.onclick = function () {
+            showModal('送信JSON', '<pre class="bg-slate-900 text-emerald-300 p-3 rounded-xl overflow-x-auto">' + JSON.stringify(st.logs[b.dataset.j].payloads, null, 2) + '</pre>');
+          };
         });
+
         box.querySelectorAll('.h-del').forEach(function (b) {
           b.onclick = function () {
             var idx = Number(b.dataset.d);
@@ -309,5 +871,11 @@
           };
         });
       }
-// ... existing code ... -->
-```
+
+      // 初期化
+      syncUI();
+      setTab('capture');
+    })();
+  </script>
+</body>
+</html>
