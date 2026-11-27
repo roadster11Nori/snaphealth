@@ -771,7 +771,7 @@
               type: 'OBJECT',
               properties: {
                 mealTitle: { type: 'STRING' },
-                confidenceScore: { type: 'NUMBER' },
+                confidenceScore: { type: 'NUMBER', description: '0から100の整数で表す推定信頼度（例: 95）' },
                 healthTip: { type: 'STRING' },
                 items: {
                   type: 'ARRAY',
@@ -806,7 +806,7 @@
             contents: [{
               role: 'user',
               parts: [
-                { text: '管理栄養士としてこの食事画像を解析し、写っている全料理の推定重量(g)・カロリー(kcal)・タンパク質(g)・脂質(g)・炭水化物(g)・食物繊維(g)・糖類(g)・ナトリウム(mg)を日本語のJSONで返してください。' },
+                { text: '管理栄養士としてこの食事画像を解析し、写っている全料理の推定重量(g)・カロリー(kcal)・タンパク質(g)・脂質(g)・炭水化物(g)・食物繊維(g)・糖類(g)・ナトリウム(mg)を日本語のJSONで返してください。confidenceScoreは0〜100の整数（例：95）にしてください。' },
                 { inlineData: { mimeType: 'image/jpeg', data: b64 } }
               ]
             }],
@@ -947,7 +947,11 @@
         $('box-result').classList.remove('hidden');
 
         $('res-img').src = st.img ? st.img.url : '';
-        $('res-conf').textContent = 'AI推定度 ' + (st.res.confidenceScore || 90) + '%';
+        var rawConf = Number(st.res.confidenceScore);
+        var confPct = (isNaN(rawConf) || rawConf <= 0)
+          ? 90
+          : (rawConf <= 1 ? Math.round(rawConf * 100) : Math.min(100, Math.round(rawConf)));
+        $('res-conf').textContent = 'AI推定度 ' + confPct + '%';
         $('res-title').value = st.res.mealTitle || '食事の記録';
         $('res-tip').textContent = '💡 ' + (st.res.healthTip || 'バランスよく食べましょう');
         $('res-time').value = st.time;
