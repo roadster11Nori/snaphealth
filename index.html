@@ -52,7 +52,7 @@
       <div class="flex items-center gap-1 shrink-0">
         <button id="btn-theme" type="button" aria-label="ダークモード切替" title="テーマ切替" class="w-7 h-7 rounded-full flex items-center justify-center bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs">🌙</button>
         <button id="btn-pwa" type="button" class="px-2 py-1 rounded-full text-[11px] font-bold bg-slate-900 dark:bg-slate-700 text-white">📱 追加</button>
-        <span id="badge-mode" class="px-2 py-1 rounded-full text-[11px] font-bold bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300">● デモ</span>
+        <button id="badge-mode" type="button" title="Google Health 連携状態" class="px-2 py-1 rounded-full text-[11px] font-bold bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300">● デモ</button>
       </div>
     </div>
 
@@ -204,6 +204,7 @@
               <input id="set-clientid" type="text" placeholder="xxxx.apps.googleusercontent.com" class="flex-1 min-w-0 px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs text-slate-900 dark:text-slate-100" />
               <button id="btn-oauth" type="button" class="px-3 py-2 rounded-xl bg-slate-900 dark:bg-emerald-600 text-white text-xs font-bold shrink-0">認証</button>
             </div>
+            <p id="token-status" class="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5"></p>
           </div>
           <div>
             <label class="text-xs font-bold block mb-1 text-slate-700 dark:text-slate-300">アクセストークン（直接入力用）</label>
@@ -295,7 +296,7 @@
       var st = {
         tab: 'capture',
         cfg: Object.assign(
-          { apikey: '', mode: 'demo', clientId: '', token: '', split: false, auto: false, target: 2000, theme: 'system' },
+          { apikey: '', mode: 'demo', clientId: '', token: '', tokenExpiresAt: 0, split: false, auto: false, target: 2000, theme: 'system' },
           loadJson('sh_cfg', {})
         ),
         logs: loadJson('sh_logs', []),
@@ -307,8 +308,85 @@
         pwaEvent: null
       };
 
-      function saveCfg() {
-        try { localStorage.setItem('sh_cfg', JSON.stringify(st.cfg)); } catch (e) {}
+      // アクセストークンが有効期限内か判定（期限1分前をバッファとして扱う）
+      function isTokenValid() {
+        if (!st.cfg.token || !st.cfg.token.trim()) return false;
+        if (st.cfg.tokenExpiresAt && st.cfg.tokenExpiresAt > 0) {
+          return Date.now() < (st.cfg.tokenExpiresAt - 60000);
+        }
+        return true;
+      }
+
+      // クリック時にポップアップがブロックされないよう、GISスクリプトを事前読み込み
+      var gisLoadingPromise = null;
+      function preloadGis() {
+        if (window.google && window.google.accounts && window.google.accounts.oauth2) {
+          return Promise.resolve();
+        }
+        if (gisLoadingPromise) return gisLoadingPromise;
+        gisLoadingPromise = new Promise(function (resolve, reject) {
+          var s = document.createElement('script');
+          s.src = 'https://accounts.google.com/gsi/client';
+          s.async = true;
+          s.onload = function () { resolve(); };
+          s.onerror = function () {
+            gisLoadingPromise = null;
+            reject(new Error('Google認証スクリプトの読込に失敗しました'));
+          };
+          document.body.appendChild(s);
+        });
+        return gisLoadingPromise;
+      }
+
+      // Google OAuth 認証を実行して有効期限付きでトークンを保存する
+      function requestGoogleAuth(silentPreferred) {
+        var cid = (st.cfg.clientId || '').trim();
+        if (!cid) {
+          return Promise.reject(new Error('「⚙️ 連携設定」でクライアントIDを入力してください'));
+        }
+        function openOAuth() {
+          return new Promise(function (resolve, reject) {
+            try {
+              var settled = false;
+              var tc = window.google.accounts.oauth2.initTokenClient({
+                client_id: cid,
+                scope: GH_SCOPE,
+                include_granted_scopes: false,
+                callback: function (r) {
+                  if (settled) return;
+                  settled = true;
+                  if (r && r.access_token) {
+                    var expiresIn = Number(r.expires_in) || 3500;
+                    st.cfg.token = r.access_token;
+                    st.cfg.tokenExpiresAt = Date.now() + expiresIn * 1000;
+                    st.cfg.mode = 'live';
+                    saveCfg();
+                    syncUI();
+                    resolve(r.access_token);
+                  } else {
+                    reject(new Error('認証がキャンセルされたか失敗しました'));
+                  }
+                },
+                error_callback: function (err) {
+                  if (settled) return;
+                  settled = true;
+                  var msg = (err && err.type === 'popup_closed')
+                    ? '認証画面が閉じられました'
+                    : '認証ポップアップを開けませんでした。もう一度お試しください';
+                  reject(new Error(msg));
+                }
+              });
+              // prompt: '' にすると承認済みアカウントでは同意画面を省略しやすい
+              tc.requestAccessToken(silentPreferred ? { prompt: '' } : {});
+            } catch (e) {
+              reject(new Error('OAuthエラー: ' + e.message));
+            }
+          });
+        }
+        if (window.google && window.google.accounts && window.google.accounts.oauth2) {
+          return openOAuth();
+        }
+        return preloadGis().then(openOAuth);
       }
 
       function saveLogs() {
@@ -438,12 +516,39 @@
       function syncUI() {
         applyTheme();
         $('key-alert').classList.toggle('hidden', Boolean(st.cfg.apikey.trim()));
-        var liveReady = st.cfg.mode === 'live' && st.cfg.token.trim();
+        var isLive = st.cfg.mode === 'live';
+        var hasToken = Boolean(st.cfg.token && st.cfg.token.trim());
+        var liveReady = isLive && isTokenValid();
         var badge = $('badge-mode');
-        badge.textContent = liveReady ? '● 連携中' : (st.cfg.mode === 'live' ? '● 未認証' : '● デモ');
-        badge.className = 'px-2 py-1 rounded-full text-[11px] font-bold border ' + (liveReady
+        if (!isLive) {
+          badge.textContent = '● デモ';
+        } else if (liveReady) {
+          badge.textContent = '● 連携中';
+        } else if (hasToken) {
+          badge.textContent = '↻ 再認証';
+        } else {
+          badge.textContent = '● 未認証';
+        }
+        badge.className = 'px-2 py-1 rounded-full text-[11px] font-bold border transition ' + (liveReady
           ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300'
           : 'bg-amber-50 dark:bg-amber-950/60 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300');
+
+        // 連携設定画面のトークン残り時間表示
+        var statusEl = $('token-status');
+        if (statusEl) {
+          if (!isLive) {
+            statusEl.textContent = '';
+          } else if (liveReady && st.cfg.tokenExpiresAt > 0) {
+            var remMin = Math.max(1, Math.round((st.cfg.tokenExpiresAt - Date.now()) / 60000));
+            statusEl.textContent = '✅ 認証済み（有効期限：あと約' + remMin + '分／期限切れ時は記録時に自動で再認証します）';
+          } else if (liveReady) {
+            statusEl.textContent = '✅ 認証済み（手動トークン）';
+          } else if (hasToken) {
+            statusEl.textContent = '⏰ 1時間の有効期限が切れました。「認証」または食事の「記録する」を押すと自動で再認証されます。';
+          } else {
+            statusEl.textContent = '※クライアントIDを入れて「認証」を押してください（記録時の自動再認証にも対応）。';
+          }
+        }
 
         $('set-apikey').value = st.cfg.apikey;
         $('set-clientid').value = st.cfg.clientId;
@@ -487,50 +592,49 @@
 
       // 設定入力イベント
       $('set-apikey').oninput = function (e) { st.cfg.apikey = e.target.value; saveCfg(); syncUI(); };
-      $('set-clientid').oninput = function (e) { st.cfg.clientId = e.target.value; saveCfg(); };
-      $('set-token').oninput = function (e) { st.cfg.token = e.target.value; saveCfg(); syncUI(); };
+      $('set-clientid').oninput = function (e) {
+        st.cfg.clientId = e.target.value;
+        saveCfg();
+        if (st.cfg.clientId.trim()) preloadGis().catch(function () {});
+        syncUI();
+      };
+      $('set-token').oninput = function (e) {
+        st.cfg.token = e.target.value;
+        st.cfg.tokenExpiresAt = 0;
+        saveCfg();
+        syncUI();
+      };
       $('set-target').oninput = function (e) { st.cfg.target = Number(e.target.value) || 2000; saveCfg(); renderSummary(); };
       $('chk-split').onchange = function (e) { st.cfg.split = e.target.checked; saveCfg(); };
       $('chk-autosend').onchange = function (e) { st.cfg.auto = e.target.checked; saveCfg(); };
       $('mode-demo').onclick = function () { st.cfg.mode = 'demo'; saveCfg(); syncUI(); };
-      $('mode-live').onclick = function () { st.cfg.mode = 'live'; saveCfg(); syncUI(); };
+      $('mode-live').onclick = function () {
+        st.cfg.mode = 'live';
+        saveCfg();
+        if (st.cfg.clientId.trim()) preloadGis().catch(function () {});
+        syncUI();
+      };
 
-      // Google OAuth 認証
-      $('btn-oauth').onclick = function () {
-        var cid = st.cfg.clientId.trim();
-        if (!cid) { toast('クライアントIDを入力してください', true); return; }
-        function runAuth() {
-          try {
-            var tc = window.google.accounts.oauth2.initTokenClient({
-              client_id: cid,
-              scope: GH_SCOPE,
-              include_granted_scopes: false,
-              callback: function (r) {
-                if (r && r.access_token) {
-                  st.cfg.token = r.access_token;
-                  st.cfg.mode = 'live';
-                  saveCfg();
-                  syncUI();
-                  toast('Google Health の認証に成功しました！');
-                } else {
-                  toast('認証がキャンセルされたか失敗しました', true);
-                }
-              }
-            });
-            tc.requestAccessToken();
-          } catch (e) {
-            toast('OAuthエラー: ' + e.message, true);
-          }
-        }
-        if (window.google && window.google.accounts && window.google.accounts.oauth2) {
-          runAuth();
+      // ヘッダーの連携バッジタップで即座に再認証（設定未完了時は設定タブへ移動）
+      $('badge-mode').onclick = function () {
+        if (st.cfg.mode === 'live' && st.cfg.clientId.trim() && !isTokenValid()) {
+          requestGoogleAuth(true).then(function () {
+            toast('Google Health に再接続しました！');
+          }).catch(function (e) {
+            toast(e.message || '再認証に失敗しました', true);
+          });
         } else {
-          var s = document.createElement('script');
-          s.src = 'https://accounts.google.com/gsi/client';
-          s.onload = runAuth;
-          s.onerror = function () { toast('Google認証スクリプトの読込に失敗しました', true); };
-          document.body.appendChild(s);
+          setTab('settings');
         }
+      };
+
+      // Google OAuth 認証ボタン
+      $('btn-oauth').onclick = function () {
+        requestGoogleAuth(false).then(function () {
+          toast('Google Health の認証に成功しました！');
+        }).catch(function (e) {
+          toast(e.message || '認証に失敗しました', true);
+        });
       };
 
       // PWA インストール案内
@@ -812,53 +916,49 @@
           };
         });
       }
-
-      // 解析結果の写真をタップして拡大表示
-      $('res-img-wrap').onclick = function () {
-        if (st.img && st.img.url) {
-          openLightbox(st.img.url, (st.res && st.res.mealTitle) || '');
-        }
-      };
-
-      $('res-title').oninput = function (e) { if (st.res) st.res.mealTitle = e.target.value; };
-      $('res-time').onchange = function (e) { st.time = e.target.value; };
-      $('btn-reset').onclick = function () {
-        st.img = null; st.res = null;
-        $('box-result').classList.add('hidden');
-        $('box-idle').classList.remove('hidden');
-      };
-      $('btn-json').onclick = function () {
-        showModal('Google Health API v4 JSON',
-          '<pre class="bg-slate-900 dark:bg-slate-950 border border-slate-800 text-emerald-300 p-3 rounded-xl overflow-x-auto">' + esc(JSON.stringify(buildPayloads(), null, 2)) + '</pre>');
-      };
-
-      // 食事記録の保存（詳細振り返り用に品目・アドバイス・詳細栄養素も保存）
+      // 食事記録の保存（トークン期限切れ時は自動で再認証してからそのまま記録）
       function doSave() {
         if (!st.res) return;
         var payloads = buildPayloads();
         var isLive = st.cfg.mode === 'live';
-        if (isLive && !st.cfg.token.trim()) {
-          toast('本番送信には「⚙️ 連携設定」で認証が必要です', true);
-          return;
+
+        var authStep;
+        if (isLive && !isTokenValid()) {
+          if (!st.cfg.clientId.trim()) {
+            toast('本番送信には「⚙️ 連携設定」でクライアントIDと認証が必要です', true);
+            return;
+          }
+          $('btn-save').disabled = true;
+          $('btn-save').textContent = '再認証中...';
+          // クリック直後に同期的に呼ぶことでスマホのポップアップブロックを回避
+          authStep = requestGoogleAuth(true);
+        } else {
+          $('btn-save').disabled = true;
+          $('btn-save').textContent = '送信中...';
+          authStep = Promise.resolve();
         }
 
-        $('btn-save').disabled = true;
-        $('btn-save').textContent = '送信中...';
-
-        var req = isLive
-          ? Promise.all(payloads.map(function (b) {
-              return fetch(GH_URL, {
-                method: 'POST',
-                headers: { Authorization: 'Bearer ' + st.cfg.token.trim(), 'Content-Type': 'application/json' },
-                body: JSON.stringify(b)
-              }).then(function (r) {
-                if (!r.ok) return r.text().then(function (t) { throw new Error('Health API (' + r.status + '): ' + t.slice(0, 220)); });
-                return r.json();
-              });
-            }))
-          : Promise.resolve([]);
-
-        req.then(function (results) {
+        authStep.then(function () {
+          $('btn-save').textContent = '送信中...';
+          if (!isLive) return [];
+          return Promise.all(payloads.map(function (b) {
+            return fetch(GH_URL, {
+              method: 'POST',
+              headers: { Authorization: 'Bearer ' + st.cfg.token.trim(), 'Content-Type': 'application/json' },
+              body: JSON.stringify(b)
+            }).then(function (r) {
+              if (r.status === 401) {
+                st.cfg.token = '';
+                st.cfg.tokenExpiresAt = 0;
+                saveCfg();
+                syncUI();
+                throw new Error('認証の期限が切れました。もう一度「この食事を記録する」を押すと自動で再認証して記録できます');
+              }
+              if (!r.ok) return r.text().then(function (t) { throw new Error('Health API (' + r.status + '): ' + t.slice(0, 220)); });
+              return r.json();
+            });
+          }));
+        }).then(function (results) {
           var names = isLive && Array.isArray(results)
             ? results.map(function (res) { return res && ((res.response && res.response.name) || res.name); }).filter(Boolean)
             : [];
@@ -941,7 +1041,11 @@
           (st.res.items || []).forEach(function (i) { i.on = true; });
           renderResult();
           if (st.cfg.auto) {
-            doSave();
+            if (st.cfg.mode === 'live' && !isTokenValid()) {
+              toast('解析完了！認証の期限が切れているため、下の「✅ この食事を記録する」を押して再認証＆記録してください');
+            } else {
+              doSave();
+            }
           } else {
             toast('AI解析が完了しました！');
           }
@@ -1138,18 +1242,36 @@
             var idx = Number(b.dataset.d);
             var item = st.logs[idx];
             if (item && item.live && item.names && item.names.length > 0) {
-              if (!st.cfg.token.trim()) {
-                toast('Google Healthから削除するには「⚙️ 連携設定」で認証してください', true);
-                return;
+              var authStep;
+              if (!isTokenValid()) {
+                if (!st.cfg.clientId.trim()) {
+                  toast('Google Healthから削除するには「⚙️ 連携設定」で認証してください', true);
+                  return;
+                }
+                b.disabled = true;
+                b.textContent = '再認証中...';
+                authStep = requestGoogleAuth(true);
+              } else {
+                b.disabled = true;
+                b.textContent = '削除中...';
+                authStep = Promise.resolve();
               }
-              b.disabled = true;
-              b.textContent = '削除中...';
-              fetch(GH_DEL_URL, {
-                method: 'POST',
-                headers: { Authorization: 'Bearer ' + st.cfg.token.trim(), 'Content-Type': 'application/json' },
-                body: JSON.stringify({ names: item.names })
+
+              authStep.then(function () {
+                b.textContent = '削除中...';
+                return fetch(GH_DEL_URL, {
+                  method: 'POST',
+                  headers: { Authorization: 'Bearer ' + st.cfg.token.trim(), 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ names: item.names })
+                });
               }).then(function (r) {
-                if (r.status === 401) throw new Error('認証の期限切れです。「⚙️ 連携設定」で再認証してからもう一度削除してください');
+                if (r.status === 401) {
+                  st.cfg.token = '';
+                  st.cfg.tokenExpiresAt = 0;
+                  saveCfg();
+                  syncUI();
+                  throw new Error('認証の期限が切れました。もう一度削除を押すと自動で再認証して削除できます');
+                }
                 if (!r.ok) return r.text().then(function (t) { throw new Error('削除API (' + r.status + '): ' + t.slice(0, 180)); });
                 st.logs.splice(idx, 1);
                 saveLogs();
@@ -1172,9 +1294,16 @@
         });
       }
 
-      // 初期化
+      // 初期化（GIS先読み＆アプリ復帰時の有効期限チェック）
       syncUI();
       setTab('capture');
+      if (st.cfg.mode === 'live' && st.cfg.clientId.trim()) {
+        preloadGis().catch(function () {});
+      }
+      document.addEventListener('visibilitychange', function () {
+        if (!document.hidden) syncUI();
+      });
+      setInterval(syncUI, 60000);
     })();
   </script>
 </body>
