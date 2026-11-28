@@ -130,7 +130,7 @@
       <!-- 解析中 -->
       <div id="box-loading" class="hidden bg-white dark:bg-slate-900 rounded-3xl p-8 border border-slate-200 dark:border-slate-800 text-center space-y-3">
         <div class="text-3xl animate-bounce">🤖</div>
-        <div class="text-sm font-bold text-slate-900 dark:text-slate-100">Gemini AI が栄養素を解析中...</div>
+        <div id="loading-title" class="text-sm font-bold text-slate-900 dark:text-slate-100">Gemini AI が栄養素を解析中...</div>
         <div id="loading-status" class="text-xs text-slate-500 dark:text-slate-400">画像を準備しています...</div>
         <button id="btn-cancel-analyze" type="button" class="mt-2 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800">キャンセルして戻る</button>
       </div>
@@ -171,6 +171,18 @@
         </div>
 
         <div id="res-items" class="divide-y divide-slate-100 dark:divide-slate-800 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden"></div>
+
+        <!-- 一言ツッコミ再計算 ＆ 高精度再解析ボックス -->
+        <div class="bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-2xl p-3 space-y-2">
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-[11px] font-bold text-slate-700 dark:text-slate-200">✏️ 料理が違うときは一言で再計算</span>
+            <button id="btn-reanalyze-hi" type="button" class="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 underline shrink-0">🔍 高精度で再解析</button>
+          </div>
+          <div class="flex gap-1.5">
+            <input id="res-correction" type="text" placeholder="例：カブの煮物じゃなくて梨です" class="flex-1 min-w-0 px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-emerald-500" />
+            <button id="btn-recalc" type="button" class="px-3.5 py-2 rounded-xl bg-slate-900 dark:bg-emerald-600 hover:bg-slate-800 dark:hover:bg-emerald-700 text-white text-xs font-bold shrink-0">🔄 再計算</button>
+          </div>
+        </div>
 
         <button id="btn-save" type="button" class="w-full py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-sm">✅ この食事を記録する</button>
         <button id="btn-json" type="button" class="w-full py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300">Google Health API JSON を確認</button>
@@ -260,8 +272,9 @@
       var GH_URL = 'https://health.googleapis.com/v4/users/me/dataTypes/nutrition-log/dataPoints';
       var GH_DEL_URL = 'https://health.googleapis.com/v4/users/me/dataTypes/nutrition-log/dataPoints:batchDelete';
       var GH_SCOPE = 'https://www.googleapis.com/auth/googlehealth.nutrition.writeonly';
-      // Gemini 3.5 Flash-Lite（2.5 Flash公式後継・高速）を最優先し、混雑やタイムアウト時は自動切替
+      // 通常解析は最速の Gemini 3.5 Flash-Lite 優先、高精度再解析は上位の Gemini 3 Flash を最優先
       var GEMINI_MODELS = ['gemini-3.5-flash-lite', 'gemini-3-flash-preview', 'gemini-2.5-flash-lite'];
+      var GEMINI_MODELS_HI = ['gemini-3-flash-preview', 'gemini-3.5-flash-lite', 'gemini-2.5-flash-lite'];
 
       var MEALS = [
         { id: 'BREAKFAST', label: '🌅 朝食' },
@@ -662,18 +675,18 @@
           '</div>');
       };
 
-      // 画像リサイズ・圧縮（縦長写真も長辺768pxに最適化してアップロードを高速化）
+      // 画像リサイズ・圧縮（食材の質感を残すため長辺1024px・品質0.85に最適化）
       function compress(fileOrUrl) {
         return new Promise(function (resolve, reject) {
           var img = new Image();
           img.onload = function () {
             var maxSide = Math.max(img.width, img.height) || 1;
-            var sc = Math.min(1, 768 / maxSide);
+            var sc = Math.min(1, 1024 / maxSide);
             var c = document.createElement('canvas');
             c.width = Math.round(img.width * sc);
             c.height = Math.round(img.height * sc);
             c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-            var url = c.toDataURL('image/jpeg', 0.75);
+            var url = c.toDataURL('image/jpeg', 0.85);
 
             var tsc = Math.min(1, 640 / maxSide);
             var tc = document.createElement('canvas');
@@ -751,6 +764,7 @@
       var analyzeAbort = null;
       var analyzeTimer = null;
       var analyzeCanceled = false;
+      var returnToResultOnCancel = false;
 
       function stopAnalyzeTimer() {
         if (analyzeTimer) {
@@ -759,10 +773,45 @@
         }
       }
 
-      // Gemini API 呼び出し（25秒タイムアウト・Gemini 3のthinkingLevel: minimal対応・自動フォールバック）
-      function callGemini(b64, onModelStep) {
+      // Gemini API 呼び出し（質感重視プロンプト・一言ツッコミ再計算・高精度再解析・自動フォールバック対応）
+      function callGemini(b64, opts) {
+        opts = opts || {};
         var key = st.cfg.apikey.trim();
         if (!key) return Promise.reject(new Error('「⚙️ 連携設定」から Gemini API キーを設定してください'));
+
+        var highPrecision = Boolean(opts.highPrecision);
+        var models = highPrecision ? GEMINI_MODELS_HI : GEMINI_MODELS;
+        var timeoutMs = highPrecision ? 35000 : 25000;
+        var correction = (opts.correction || '').trim();
+
+        var basePrompt =
+          '日本の家庭料理や外食に精通した管理栄養士として、この食事画像を解析してください。' +
+          '食卓全体の構成・器の種類・食材の表面の質感（果物の瑞々しさや切り口、煮物の照りや汁気、揚げ物の衣など）を注意深く観察し、' +
+          '見た目が似ている食材（例：カットされた梨やリンゴとカブ・大根の煮物、豆腐とチーズなど）を混同しないよう慎重に判別してください。' +
+          '写っている全料理の推定重量(g)・カロリー(kcal)・タンパク質(g)・脂質(g)・炭水化物(g)・食物繊維(g)・糖類(g)・ナトリウム(mg)を日本語のJSONで返してください。' +
+          'confidenceScoreは0〜100の整数（例：95）にしてください。';
+
+        if (correction && opts.prevResult) {
+          var prevSummary = {
+            mealTitle: opts.prevResult.mealTitle || '',
+            items: (opts.prevResult.items || []).map(function (it) {
+              return {
+                name: it.name,
+                estimatedGrams: it.estimatedGrams,
+                kcal: it.kcal,
+                proteinG: it.proteinG,
+                fatG: it.fatG,
+                carbsG: it.carbsG
+              };
+            })
+          };
+          basePrompt +=
+            '\n\n【前回の解析結果】\n' + JSON.stringify(prevSummary) +
+            '\n\n【ユーザーからの修正指示（最優先で反映してください）】\n' + correction +
+            '\n\nユーザーの修正指示に従って、該当する料理名・推定重量・カロリー・各種栄養素・食事タイトル(mealTitle)・アドバイス(healthTip)を正確に再計算してください。修正指示で言及されていない他の正しい料理はそのまま維持してください。';
+        } else if (correction) {
+          basePrompt += '\n\n【ユーザーからの補足情報（最優先で反映）】\n' + correction;
+        }
 
         function makeBody(model, useThinkingOpt) {
           var genCfg = {
@@ -795,10 +844,9 @@
           };
           if (useThinkingOpt) {
             if (model.indexOf('gemini-3') === 0) {
-              // Gemini 3系は thinkingLevel: 'minimal' で高速化
-              genCfg.thinkingConfig = { thinkingLevel: 'minimal' };
-            } else if (model.indexOf('gemini-2.5') === 0) {
-              // Gemini 2.5系フォールバック時は thinkingBudget: 0
+              // 通常は minimal で高速化、高精度再解析時は low で丁寧に判別
+              genCfg.thinkingConfig = { thinkingLevel: highPrecision ? 'low' : 'minimal' };
+            } else if (model.indexOf('gemini-2.5') === 0 && !highPrecision) {
               genCfg.thinkingConfig = { thinkingBudget: 0 };
             }
           }
@@ -806,7 +854,7 @@
             contents: [{
               role: 'user',
               parts: [
-                { text: '管理栄養士としてこの食事画像を解析し、写っている全料理の推定重量(g)・カロリー(kcal)・タンパク質(g)・脂質(g)・炭水化物(g)・食物繊維(g)・糖類(g)・ナトリウム(mg)を日本語のJSONで返してください。confidenceScoreは0〜100の整数（例：95）にしてください。' },
+                { text: basePrompt },
                 { inlineData: { mimeType: 'image/jpeg', data: b64 } }
               ]
             }],
@@ -816,8 +864,8 @@
 
         function tryModel(idx, allowThinkingOpt) {
           if (analyzeCanceled) return Promise.reject(new Error('解析をキャンセルしました'));
-          var model = GEMINI_MODELS[idx];
-          if (onModelStep) onModelStep(model, idx);
+          var model = models[idx];
+          if (opts.onModelStep) opts.onModelStep(model, idx);
 
           var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + encodeURIComponent(key);
           var ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
@@ -826,7 +874,7 @@
           var reqTimer = setTimeout(function () {
             timedOut = true;
             if (ctrl) ctrl.abort();
-          }, 25000);
+          }, timeoutMs);
 
           var fetchOpts = {
             method: 'POST',
@@ -842,7 +890,7 @@
               return tryModel(idx, false);
             }
             // 404 / 429(混雑) / 5xx(サーバー不調)時は次のモデルへ自動切替
-            if ((r.status === 404 || r.status === 429 || r.status >= 500) && idx + 1 < GEMINI_MODELS.length) {
+            if ((r.status === 404 || r.status === 429 || r.status >= 500) && idx + 1 < models.length) {
               return tryModel(idx + 1, true);
             }
             if (!r.ok) {
@@ -854,14 +902,14 @@
           }).catch(function (err) {
             clearTimeout(reqTimer);
             if (analyzeCanceled) throw new Error('解析をキャンセルしました');
-            // 25秒タイムアウトや一時的通信エラー時は次のモデルへ自動切替
+            // タイムアウトや一時的通信エラー時は次のモデルへ自動切替
             if (timedOut || (err && err.name === 'AbortError')) {
-              if (idx + 1 < GEMINI_MODELS.length) {
+              if (idx + 1 < models.length) {
                 return tryModel(idx + 1, true);
               }
               throw new Error('AIの応答がタイムアウトしました。電波状況を確認してもう一度お試しください');
             }
-            if (idx + 1 < GEMINI_MODELS.length && err && /Failed to fetch|NetworkError/i.test(err.message || '')) {
+            if (idx + 1 < models.length && err && /Failed to fetch|NetworkError/i.test(err.message || '')) {
               return tryModel(idx + 1, true);
             }
             throw err;
@@ -1016,6 +1064,7 @@
       $('btn-reset').onclick = function () {
         st.img = null;
         st.res = null;
+        $('res-correction').value = '';
         $('box-result').classList.add('hidden');
         $('box-idle').classList.remove('hidden');
       };
@@ -1025,6 +1074,76 @@
       };
       $('res-img-wrap').onclick = function () {
         if (st.img && st.img.url) openLightbox(st.img.url, (st.res && st.res.mealTitle) || '');
+      };
+
+      // 一言ツッコミで再計算 / 上位AIで高精度再解析
+      function runReanalyze(forceHighPrecision) {
+        if (!st.img || !st.img.b64) {
+          toast('再解析する写真がありません', true);
+          return;
+        }
+        var correction = ($('res-correction').value || '').trim();
+        var useHi = Boolean(forceHighPrecision || !correction);
+
+        analyzeCanceled = false;
+        returnToResultOnCancel = true;
+        stopAnalyzeTimer();
+        $('box-result').classList.add('hidden');
+        $('box-loading').classList.remove('hidden');
+        $('loading-title').textContent = correction
+          ? 'ご指摘の内容を反映して再計算中...'
+          : '上位AIで写真をじっくり再解析中...';
+
+        var statusEl = $('loading-status');
+        var startedAt = Date.now();
+        var currentPhase = correction ? '修正内容をAIへ送信中...' : '高精度モデルで解析中...';
+        if (statusEl) statusEl.textContent = currentPhase;
+
+        analyzeTimer = setInterval(function () {
+          var sec = Math.floor((Date.now() - startedAt) / 1000);
+          if (statusEl) statusEl.textContent = currentPhase + '（' + sec + '秒経過）';
+        }, 1000);
+
+        callGemini(st.img.b64, {
+          correction: correction,
+          prevResult: st.res,
+          highPrecision: useHi,
+          onModelStep: function (model, idx) {
+            currentPhase = idx === 0
+              ? (correction ? '再計算中 (' + model + ')' : '高精度解析中 (' + model + ')')
+              : '別モデルへ自動切替中 (' + model + ')';
+            var sec = Math.floor((Date.now() - startedAt) / 1000);
+            if (statusEl) statusEl.textContent = currentPhase + '（' + sec + '秒経過）';
+          }
+        }).then(function (ai) {
+          stopAnalyzeTimer();
+          if (analyzeCanceled) return;
+          st.res = ai;
+          (st.res.items || []).forEach(function (i) { i.on = true; });
+          $('res-correction').value = '';
+          renderResult();
+          toast(correction ? 'ご指摘を反映して再計算しました！' : '高精度モデルで再解析しました！');
+        }).catch(function (e) {
+          stopAnalyzeTimer();
+          $('box-loading').classList.add('hidden');
+          if (st.res) {
+            $('box-result').classList.remove('hidden');
+          } else {
+            $('box-idle').classList.remove('hidden');
+          }
+          if (!analyzeCanceled) {
+            toast(e.message || '再計算に失敗しました', true);
+          }
+        });
+      }
+
+      $('btn-recalc').onclick = function () { runReanalyze(false); };
+      $('btn-reanalyze-hi').onclick = function () { runReanalyze(true); };
+      $('res-correction').onkeydown = function (e) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          runReanalyze(false);
+        }
       };
 
       // 食事記録の保存（トークン期限切れ時は自動で再認証してからそのまま記録）
@@ -1122,6 +1241,7 @@
           renderSummary();
           st.img = null;
           st.res = null;
+          $('res-correction').value = '';
           $('box-result').classList.add('hidden');
           $('box-idle').classList.remove('hidden');
           toast(isLive ? 'Google Health に記録しました！' : 'スマホ内に食事を記録しました！');
@@ -1144,20 +1264,26 @@
           analyzeAbort = null;
         }
         $('box-loading').classList.add('hidden');
-        $('box-idle').classList.remove('hidden');
+        if (returnToResultOnCancel && st.res) {
+          $('box-result').classList.remove('hidden');
+        } else {
+          $('box-idle').classList.remove('hidden');
+        }
         toast('解析をキャンセルしました');
       };
 
       // 画像取り込み＆解析フロー
       function handleImage(fileOrUrl) {
         analyzeCanceled = false;
+        returnToResultOnCancel = false;
         stopAnalyzeTimer();
         $('box-idle').classList.add('hidden');
         $('box-result').classList.add('hidden');
         $('box-loading').classList.remove('hidden');
+        $('loading-title').textContent = 'Gemini AI が栄養素を解析中...';
         var statusEl = $('loading-status');
         var startedAt = Date.now();
-        var currentPhase = '画像を圧縮しています...';
+        var currentPhase = '画像を最適化しています...';
         if (statusEl) statusEl.textContent = currentPhase;
 
         analyzeTimer = setInterval(function () {
@@ -1174,16 +1300,19 @@
           st.img = img;
           currentPhase = 'AIへ送信中...';
           if (statusEl) statusEl.textContent = currentPhase;
-          return callGemini(img.b64, function (model, idx) {
-            currentPhase = idx === 0 ? 'AIで解析中 (' + model + ')' : '別モデルへ自動切替中 (' + model + ')';
-            var sec = Math.floor((Date.now() - startedAt) / 1000);
-            if (statusEl) statusEl.textContent = currentPhase + '（' + sec + '秒経過）';
+          return callGemini(img.b64, {
+            onModelStep: function (model, idx) {
+              currentPhase = idx === 0 ? 'AIで解析中 (' + model + ')' : '別モデルへ自動切替中 (' + model + ')';
+              var sec = Math.floor((Date.now() - startedAt) / 1000);
+              if (statusEl) statusEl.textContent = currentPhase + '（' + sec + '秒経過）';
+            }
           });
         }).then(function (ai) {
           stopAnalyzeTimer();
           if (analyzeCanceled) return;
           st.res = ai;
           (st.res.items || []).forEach(function (i) { i.on = true; });
+          $('res-correction').value = '';
           renderResult();
           if (st.cfg.auto) {
             if (st.cfg.mode === 'live' && !isTokenValid()) {
